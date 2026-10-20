@@ -20,7 +20,7 @@ RAYLIB_SOURCES = \
     $$RL/raudio.c
 
 wasm {
-    # Web (Emscripten, WebGL2) needs a Qt for WebAssembly kit; prefer the CMake web build (see README).
+    # Web (Emscripten, WebGL2) with a Qt for WebAssembly kit; page and link flags are in demos/demo.pri.
     DEFINES += PLATFORM_WEB GRAPHICS_API_OPENGL_ES3
     SOURCES += $$RAYLIB_SOURCES
     QMAKE_LFLAGS += -sUSE_GLFW=3 -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 \

@@ -62,7 +62,7 @@ emcmake cmake -S . -B build-web -DCMAKE_BUILD_TYPE=Release
 cmake --build build-web -j
 python -m http.server 8080 -d build-web/demos     # open http://localhost:8080/showcase/
 ```
-Each demo gets its own folder with `index.html` + `<demo>.js / .wasm / .data` (e.g. `build-web/demos/showcase/`). Windows shortcut: `web\build-web.bat [emsdk folder]`.
+With qmake, pick a **Qt for WebAssembly (single-threaded)** kit in Qt Creator; the page is `index.html` (also copied over `<demo>.html`, so Run works). Each demo gets its own folder with `index.html` + `<demo>.js / .wasm / .data` (e.g. `build-web/demos/showcase/`). Windows shortcut: `web\build-web.bat [emsdk folder]`.
 
 ## Demo keys
 
