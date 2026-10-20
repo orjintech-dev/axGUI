@@ -1,0 +1,13 @@
+build/
+build-*/
+*.o
+*.user
+*.pro.user*
+.qtcreator/
+Makefile*
+release/
+debug/
+_shot*.png
+_to_delete/
+*.rar
+docs/NOTES.tr.md

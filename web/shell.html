@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>axGUI demo (WebAssembly)</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #1e1f22; }
+  #canvas { display: block; position: absolute; left: 0; top: 0; border: 0; outline: none; }
+  #status { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+            color: #c8c8c8; font: 15px system-ui, sans-serif; text-align: center; }
+  #bar { width: 240px; height: 4px; background: #333; margin-top: 10px; border-radius: 2px; overflow: hidden; }
+  #bar div { height: 100%; width: 0; background: #4a8cff; transition: width .15s; }
+</style>
+</head>
+<body>
+<div id="status"><span id="msg">Loading axGUI…</span><div id="bar"><div id="fill"></div></div></div>
+<canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+<script>
+  // Emscripten shell: full-window canvas, loading bar
+  var statusEl = document.getElementById('status'), msgEl = document.getElementById('msg'), fillEl = document.getElementById('fill');
+  var canvas = document.getElementById('canvas');
+  canvas.addEventListener('webglcontextlost', function(e) { alert('WebGL context lost, please reload the page.'); e.preventDefault(); }, false);
+  canvas.addEventListener('mousedown', function() { canvas.focus(); });
+  var Module = {
+    canvas: canvas,
+    print: function(t) { console.log(t); },
+    printErr: function(t) { console.warn(t); },
+    setStatus: function(t) {
+      if (!t) { statusEl.style.display = 'none'; canvas.focus(); return; }
+      var m = t.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
+      if (m) { msgEl.textContent = 'Loading axGUI…'; fillEl.style.width = (100 * parseInt(m[2]) / parseInt(m[4])) + '%'; }
+      else msgEl.textContent = t;
+    },
+    totalDependencies: 0,
+    monitorRunDependencies: function(left) {
+      this.totalDependencies = Math.max(this.totalDependencies, left);
+      Module.setStatus(left ? 'Preparing… (' + (this.totalDependencies - left) + '/' + this.totalDependencies + ')' : '');
+    }
+  };
+  window.onerror = function(e) { msgEl.textContent = 'Error: ' + e; statusEl.style.display = 'block'; };
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>
