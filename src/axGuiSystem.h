@@ -160,7 +160,8 @@ struct GroupBoxState {
     vec2 speed = vec2(0,0);
     vec2 scrollOffset = vec2(0, 0);
     vec2 scrollOffsetStart = vec2(0, 0);
-    float contentHeight = 0;
+    float contentHeight = 0;  // height of the content (previous frame), used to limit scrolling
+    float contentTop = 0;     // layout y where the content starts (body top + padding, unscrolled)
     vec2 contentStartPos;
     vec2 winScroll;
     vec2 curPos, size;
@@ -181,6 +182,7 @@ struct GroupBoxContext {
     bool animating = false, prevUseInput = true;   // no input while opening / closing
     float outerLineH = 0;                           // height of the outer row (zeroed inside, restored afterwards)
     float padding = 8;                              // GroupStyle::padding
+    float headerH = 26;                             // 0 without a title
 };
 
 // Open / close animation of collapsible containers (beginSection, ...)

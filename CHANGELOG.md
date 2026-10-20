@@ -44,6 +44,7 @@ First public version: the library together with its demo app, desktop and WebAss
 - `colorSelector` returning without `endWindow`, ignoring `open`, and not reporting `dragColor` changes.
 - Nested windows: cursor position after `endWindow`, clipping, hover / focus state, following the parent's scroll.
 - `textBox` clipping (draws outside a scrolled window, cuts tall glyphs in single-line boxes).
+- Group box scrolling is limited to its content (wheel, drag and inertia); the content height no longer grows with the scroll offset, and title-less boxes use the right body height. When the content fits, the wheel goes to the window.
 - Group box content offset and clipping; its state no longer resets when earlier widgets change; dragging over a window above no longer scrolls it.
 - Widgets under an open dropdown or color picker no longer receive mouse input.
 - `slider` only starts dragging when pressed on it, and no widget shows hover while another one is being dragged.

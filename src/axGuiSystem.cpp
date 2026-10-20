@@ -1,5 +1,7 @@
 #include "axGuiSystem.h"
 #include "axGUITextBox.h"
+#include <stdio.h>
+
 static rect comboListRect(const vec2 &boxPos, const vec2 &boxSize, int n);   // drop-down list geometry (below)
 
 inline uint32_t hashTabId(const char* str) {
@@ -1134,6 +1136,7 @@ bool axGUI::beginGroupBox(const char *title, vec2 size, bool collapsible, int sc
         grp.isOpen = true;
         // bClr = cColor(222, 222, 244);
     }
+    groupBoxStack.back().headerH = headerHeight;
 
     // Draw outer border
     float shownH = headerHeight + openE * (h - headerHeight);   // animated height
@@ -1203,7 +1206,9 @@ bool axGUI::beginGroupBox(const char *title, vec2 size, bool collapsible, int sc
         bot->resetTransform();
         bot->resetScissor();
 
-        // Handle scrolling if enabled
+        // Handle scrolling if enabled. Vertical scrolling is limited to the content: 0 (top) .. -(contentHeight - visible height).
+        const float viewH = fmax(0.0f, bodyH - padding * 2);
+        const float minScrollY = std::min(0.0f, viewH - grp.contentHeight);
         if(scrollable)
         {
             rect bodyRect(vec2(x, bodyY)+winScroll, vec2(w, bodyH));
@@ -1246,7 +1251,7 @@ bool axGUI::beginGroupBox(const char *title, vec2 size, bool collapsible, int sc
                 }
             }
 
-            if(bodyHovered && msWheel!=0)
+            if(bodyHovered && msWheel!=0 && minScrollY < 0)   // content fits: leave the wheel to the window
             {
                 grp.wheelScroll.add(grp.scrollOffset.y, msWheel * 40.0f);
                 msWheel = 0;   // do not scroll the window
@@ -1256,9 +1261,7 @@ bool axGUI::beginGroupBox(const char *title, vec2 size, bool collapsible, int sc
             if(grp.scrolling) grp.wheelScroll.stop();   // drag scrolling takes over
             if(grp.wheelScroll.active)
             {
-                // clamp range from the content height
-                float minScroll = std::min(0.0f, (bodyH - padding*2) - grp.contentHeight);
-                grp.wheelScroll.step(grp.scrollOffset.y, minScroll, 0.0f, wheelSmooth, GetFrameTime());
+                grp.wheelScroll.step(grp.scrollOffset.y, minScrollY, 0.0f, wheelSmooth, GetFrameTime());
                 bot->textSnap = false;   // content is sliding: keep text moving with it
             }
             if(debug) bot->text(axFormat("%d, %d, %d",bodyHovered,grp.clicked,grp.scrolling),vec2(x, y+bodyY-20)+winScroll,10,cRed);   // debug only
@@ -1272,6 +1275,13 @@ bool axGUI::beginGroupBox(const char *title, vec2 size, bool collapsible, int sc
         curPos = vec2(x + padding, bodyY + padding);
         lineHMax = 0;
         nextPos = curPos;
+        grp.contentTop = curPos.y;
+        // keep the scroll inside the content (drag, inertia, or content that got shorter)
+        if(grp.scrollOffset.y > 0 || grp.scrollOffset.y < minScrollY)
+        {
+            grp.scrollOffset.y = Clamp(grp.scrollOffset.y, minScrollY, 0.0f);
+            grp.speed.y = 0;
+        }
         contentClip = contentClip+winScroll;
         layoutArea = contentClip;
 
@@ -1297,13 +1307,13 @@ void axGUI::endGroupBox()
         bot->restore();
         popWinStack();
         useInput = context.prevUseInput;
-        // Calculate content height
-        grp.contentHeight = (curPos.y - grp.scrollOffset.y) - grp.contentStartPos.y;
+        // Content height: from the first row to the bottom of the last one (layout coordinates, not scrolled)
+        grp.contentHeight = fmax(0.0f, fmax(curPos.y + lineHMax, nextPos.y) - grp.contentTop);
 
         // Draw scrollbar (optional; not drawn while opening / closing)
         if(context.scrollable && !context.animating)
         {
-            float headerHeight = 26, padding = context.padding;
+            float headerHeight = context.headerH, padding = context.padding;
             float bodyH = context.size.y - headerHeight;
 
             if(grp.contentHeight > bodyH - padding * 2)

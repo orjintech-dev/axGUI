@@ -1003,7 +1003,6 @@ int main(int argc, char **argv)
 #else
     SetExitKey(KEY_NULL);   // web: ESC must not end the loop (the canvas would freeze)
 #endif
-
     // GUI and rich text share one font system: a crisp atlas at each font size (rtFonts)
     const float fontSize = 15;
     bool rtOk = rtFonts().load(GetDirectoryPath(resPath("fonts/regular.ttf").c_str()));
