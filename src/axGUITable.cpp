@@ -416,11 +416,17 @@ bool axGUI::table(TableState &st, vec2 size, const std::vector<TableColumn> &col
         if (st.speed.length() < 0.3f) st.speed = vec2(0, 0);
     }
     if (hovered && msWheel != 0) {
-        if (shift || (totalW > avail && contentH <= viewH)) st.scroll.x -= msWheel * rowH * 2;
-        else st.scroll.y -= msWheel * rowH * 3;
+        if (shift || (totalW > avail && contentH <= viewH)) st.wheelX.add(st.scroll.x, -msWheel * rowH * 2);
+        else st.wheelY.add(st.scroll.y, -msWheel * rowH * 3);
         msWheel = 0;   // so the window scroll doesn't move as well
         proc = true;
         st.speed = vec2(0, 0);
+    }
+    {
+        const float dt = GetFrameTime();
+        bool animating = st.wheelX.step(st.scroll.x, 0.0f, std::max(0.0f, totalW - avail), wheelSmooth, dt);
+        animating |= st.wheelY.step(st.scroll.y, 0.0f, std::max(0.0f, contentH - viewH), wheelSmooth, dt);
+        if (animating) bot->textSnap = false;   // rows are sliding: keep text moving with them
     }
 
     // --- keyboard (when focused)

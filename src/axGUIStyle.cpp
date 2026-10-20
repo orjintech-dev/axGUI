@@ -50,6 +50,7 @@ void collect(axGUI &g, std::vector<FloatItem> &F, std::vector<ColorItem> &C)
         { "behavior", "hintDelay",  axTr("Tooltip delay", "İpucu gecikmesi"), "gui.hintTime", &g.hintTime, 0, 2000, 2.0f, "%.0f ms" },
         { "behavior", "hover",      axTr("Hover transition", "Üstüne gelme geçişi"), "gui.hoverDuration", &g.hoverDuration, 0, 0.5f, 0.002f, axTr("%.2f s", "%.2f sn") },
         { "behavior", "wheelStep",  axTr("Wheel step", "Tekerlek adımı"),    "gui.wheelStep",        &g.wheelStep,  8, 200, 0.5f, "%.0f px" },
+        { "behavior", "wheelSmooth", axTr("Wheel smoothing", "Tekerlek yumuşatma"), "gui.wheelSmooth", &g.wheelSmooth, 0, 0.3f, 0.002f, axTr("%.2f s", "%.2f sn") },
         { "behavior", "wheelLatch", axTr("Wheel latch", "Tekerlek kilidi"),   "gui.wheelLatchDelay",  &g.wheelLatchDelay, 0, 2, 0.005f, axTr("%.2f s", "%.2f sn") },
         { "textbox", "border",      axTr("Border width", "Çerçeve kalınlığı"), "textcfg.borderWidth",  &textcfg.borderWidth,  0, 6, 0.02f, "%.1f" },
         { "textbox", "radius",      axTr("Corner radius", "Köşe yarıçapı"),     "textcfg.cornerRadius", &textcfg.cornerRadius, 0, 16, 0.1f, "%.1f" },

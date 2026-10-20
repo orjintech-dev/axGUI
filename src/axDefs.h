@@ -12,6 +12,33 @@
 #include "stdarg.h"
 #include <string>
 #include <stack>
+
+// Smooth wheel scrolling: the wheel moves a target and the scroll value eases toward it.
+// Per frame: on wheel input `ss.add(value, deltaPx)`, then always `ss.step(value, lo, hi, tau, dt)`.
+// tau is the time constant in seconds (0: jump immediately). If something else moves the value
+// (scrollbar drag, keyboard, scroll-into-view) the animation stops and that change wins.
+struct SmoothScroll {
+    float target = 0, last = 0;
+    bool active = false;
+    void add(float cur, float delta) {
+        if (!active || fabsf(cur - last) > 0.01f) target = cur;
+        target += delta;
+        active = true;
+        last = cur;
+    }
+    bool step(float &cur, float lo, float hi, float tau, float dt) {
+        if (!active) return false;
+        if (fabsf(cur - last) > 0.01f) { active = false; return false; }
+        if (hi < lo) hi = lo;
+        target = target < lo ? lo : (target > hi ? hi : target);
+        if (tau <= 0 || dt <= 0) cur = target;
+        else cur += (target - cur) * (1.0f - expf(-dt / tau));
+        if (fabsf(target - cur) < 0.25f) { cur = target; active = false; }
+        last = cur;
+        return true;
+    }
+    void stop() { active = false; }
+};
 #include <json.hpp>
 #include <sstream>
 #include <regex>

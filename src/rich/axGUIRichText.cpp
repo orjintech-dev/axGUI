@@ -133,10 +133,11 @@ bool axGUI::richTextBox(RichTextState &st, vec2 size)
         }
     }
     if (hovered && msWheel != 0 && hasSB) {
-        st.scrollY -= msWheel * 48.0f;
+        st.wheelScroll.add(st.scrollY, -msWheel * 48.0f);
         msWheel = 0;   // keep the window from scrolling too
-        clampScroll();
     }
+    if (st.wheelScroll.step(st.scrollY, 0.0f, std::max(0.0f, st.contentH - size.y), wheelSmooth, GetFrameTime()))
+        clampScroll();
 
     // ---- image file drag and drop
     if (st.acceptDrops && !st.readOnly && hovered && IsFileDropped()) {

@@ -19,6 +19,7 @@ First public version: the library together with its demo app, desktop and WebAss
 - **Theme colors**: `GUI_TOOLTIP_BG`, `GUI_TOOLTIP_TEXT`; helpers `mixColor`, `withAlpha`, `contrast`.
 - **Retained-mode helpers**: `bot->deferred(fn)` runs direct raylib drawing code in the right layer and clip; `intersectScissorWorld` is recorded correctly.
 - **Text gamma** for the font atlases: `rtFonts().setTextGamma(g)` (default 1.3).
+- **Smooth wheel scrolling** for windows, group boxes, tables, text boxes and rich text: the wheel moves a target and the content eases toward it (`gui.wheelSmooth`, default 0.08 s; 0 = instant; also in the style editor). Text is drawn at sub-pixel positions while sliding. Reusable as `SmoothScroll` (axDefs.h).
 - **Mouse wheel latch**: once a window starts scrolling, the wheel stays with it until scrolling stops (`gui.wheelLatchDelay`).
 - **WebAssembly build** (Emscripten, WebGL 2) through CMake, with an HTML shell in `web/`.
 - Demo: screen-size based window layout, English / Turkish switch, drawn icons, rich text window.

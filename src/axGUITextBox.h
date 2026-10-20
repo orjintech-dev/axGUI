@@ -59,6 +59,7 @@ struct TextBoxState {
     // Scrolling
     float scrollX = 0.0f;
     float scrollY = 0.0f;
+    SmoothScroll wheelX, wheelY;   // wheel scrolling (gui.wheelSmooth)
 
     // Multi-line specific
     std::vector<int> lineStarts;

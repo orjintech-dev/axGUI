@@ -69,6 +69,7 @@ struct TableState
     int selRow = -1;             // selected data row (multi-select: last clicked)
     std::vector<int> selected;   // selected data rows in multi-select ({selRow} for single selection)
     vec2 scroll = vec2(0, 0);    // scroll offset (px, positive)
+    SmoothScroll wheelX, wheelY; // wheel scrolling (gui.wheelSmooth)
 
     // --- rewritten every frame (events)
     int clickedRow = -1;         // clicked this frame

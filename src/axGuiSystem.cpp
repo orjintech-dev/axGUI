@@ -466,7 +466,6 @@ void axGUI::endFrame()
         if(msLeftReleased && winScr.scrolling) { winScr.speed.y=msSpeed.y; proc=true; }
         if(msWheel!=0)
         {
-            axLog("wheel: %d",int(msWheel));
             if(!hoverWinID) scrollWinName=NULL;
             if(msSpeed.y<0 && msWheel>0) msSpeed.y=0;
             if(msSpeed.y>0 && msWheel<0) msSpeed.y=0;
@@ -682,6 +681,7 @@ WindowState &axGUI::beginWindow(const char *name, vec2 &pos, vec2 &size, WinFlag
     rect parentClip = winClip;      // child window stays within the parent window's clip area
     const bool isChild = (prWinName != NULL);
     WindowState &win = windowStates[name];
+    if(win.wheelScroll.active) bot->textSnap = false;   // content is sliding: keep text moving with it
     win.order = ++winOrder;
     if(!win.zOrder) win.zOrder = win.order;
     win.frame = frameCnt;
@@ -743,10 +743,8 @@ WindowState &axGUI::beginWindow(const char *name, vec2 &pos, vec2 &size, WinFlag
                 scrollWinName=win.name;
                 axLog("scrollWinName:%s",win.name);
             }
-            if(msWheel!=0) axLog("scroll hoverID:%d  hoverWinID:%d, ID:%d",hoverID,hoverWinID,ID);
             if(msWheel!=0 && flags&WIN_SCROLLBAR && hoverWinID==ID)
             {
-                axLog("scroll hoverID:%d  hoverWinID:%d",hoverID,hoverWinID);
                 scrollWinName=win.name;
             }
         }
@@ -931,10 +929,12 @@ void axGUI::endWindow(const char *name)
         }
         if(wheel != 0)
         {
-            win.scroll.y += wheel * wheelStep;
+            win.wheelScroll.add(win.scroll.y, wheel * wheelStep);
             wheelLatchLast = GetTime();
             proc = true;
         }
+        if(win.scrolling) win.wheelScroll.stop();   // drag scrolling takes over
+        win.wheelScroll.step(win.scroll.y, -maxScroll, 0.0f, wheelSmooth, GetFrameTime());
         win.scroll.y = Clamp(win.scroll.y, -maxScroll, 0.0f);
     }
 
@@ -1248,15 +1248,18 @@ bool axGUI::beginGroupBox(const char *title, vec2 size, bool collapsible, int sc
 
             if(bodyHovered && msWheel!=0)
             {
-                grp.scrollOffset.y += msWheel * 20.0f;
+                grp.wheelScroll.add(grp.scrollOffset.y, msWheel * 40.0f);
                 msWheel = 0;   // do not scroll the window
-
-                // Dynamic clamp (uses content height)
-                float maxScroll = 0.0f;
-                float minScroll = std::min(0.0f, (bodyH - padding*2) - grp.contentHeight);
-                grp.scrollOffset.y = Clamp(grp.scrollOffset.y, minScroll, maxScroll);
                 proc = true;
                 scrollWinName = NULL;
+            }
+            if(grp.scrolling) grp.wheelScroll.stop();   // drag scrolling takes over
+            if(grp.wheelScroll.active)
+            {
+                // clamp range from the content height
+                float minScroll = std::min(0.0f, (bodyH - padding*2) - grp.contentHeight);
+                grp.wheelScroll.step(grp.scrollOffset.y, minScroll, 0.0f, wheelSmooth, GetFrameTime());
+                bot->textSnap = false;   // content is sliding: keep text moving with it
             }
             if(debug) bot->text(axFormat("%d, %d, %d",bodyHovered,grp.clicked,grp.scrolling),vec2(x, y+bodyY-20)+winScroll,10,cRed);   // debug only
 

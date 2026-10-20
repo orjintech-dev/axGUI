@@ -40,6 +40,7 @@ struct RichTextState
     bool focused = false;
     bool changed = false;                   // document changed this frame
     float scrollY = 0;
+    SmoothScroll wheelScroll;               // wheel scrolling (gui.wheelSmooth)
     std::string hoverLink;                  // link under the mouse (for the tooltip)
 
     RichTextState() { editor.reset(); }

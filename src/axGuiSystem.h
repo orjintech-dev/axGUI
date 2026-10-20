@@ -167,6 +167,7 @@ struct GroupBoxState {
     rect layoutArea;
     float openT = 1;          // open animation 0..1 (collapseDuration)
     bool animInit = false;
+    SmoothScroll wheelScroll; // vertical wheel scrolling (gui.wheelSmooth)
 };
 
 struct GroupBoxContext {
@@ -383,6 +384,7 @@ struct WindowState
     long frame=0;
     vec2 scroll0;
     vec2 scroll = vec2(0,0);
+    SmoothScroll wheelScroll;   // vertical wheel scrolling (gui.wheelSmooth)
     vec2 speed = vec2(0,0);
     vec2 pos, size, relPos;
     vec2 anchor;      // inner window: origin of the position (parent window's cursor + scroll); pos = anchor + relPos
@@ -557,6 +559,7 @@ public:
     bool msAnyPressed, msAnyReleased;
     float msWheel=0;                 // this frame's mouse wheel; a widget that consumes the wheel sets it to 0 (so the window does not scroll)
     float wheelStep=48;              // window scrolling: px per wheel notch
+    float wheelSmooth=0.08f;         // wheel scrolling eases toward its target with this time constant (s); 0: instant
     // Wheel latch: once a window starts scrolling by wheel, the wheel stays with that window until scrolling ends;
     // widgets underneath (table, text box, dropdown, group box...) do not receive it. Ends when the wheel is idle for wheelLatchDelay
     // seconds or the cursor leaves the window.

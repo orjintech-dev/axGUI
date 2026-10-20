@@ -230,15 +230,19 @@ bool axGUI::textBox(TextBoxState& st, vec2 size)
         if (wheel != 0.0f) {
             msWheel = 0;
             if (st.multiline) {
-                if (shift) {
-                    st.scrollX = std::max(0.0f, st.scrollX - wheel * textcfg.wheelScrollSpeed);
-                } else {
-                    st.scrollY = std::max(0.0f, st.scrollY - wheel * st.lineHeight * textcfg.wheelScrollLines);
-                }
+                if (shift) st.wheelX.add(st.scrollX, -wheel * textcfg.wheelScrollSpeed);
+                else       st.wheelY.add(st.scrollY, -wheel * st.lineHeight * textcfg.wheelScrollLines);
             } else {
-                st.scrollX = std::max(0.0f, st.scrollX - wheel * textcfg.wheelScrollSpeed);
+                st.wheelX.add(st.scrollX, -wheel * textcfg.wheelScrollSpeed);
             }
         }
+    }
+    {
+        const float dt = GetFrameTime();
+        const float maxY = std::max(0.0f, (float)st.lineStarts.size() * st.lineHeight - textAreaH);
+        bool animating = st.wheelX.step(st.scrollX, 0.0f, 1e9f, wheelSmooth, dt);
+        animating |= st.wheelY.step(st.scrollY, 0.0f, maxY, wheelSmooth, dt);
+        if (animating) bot->textSnap = false;   // text is sliding: draw it at fractional positions
     }
 
     // ========================================================================
