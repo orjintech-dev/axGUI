@@ -11,6 +11,6 @@ cd /d "%~dp0.."
 call emcmake cmake -S . -B build-web -G Ninja -DCMAKE_BUILD_TYPE=Release || exit /b 1
 cmake --build build-web -j || exit /b 1
 echo.
-echo Done: build-web\index.html
-echo To run:  python -m http.server 8080 -d build-web   and open  http://localhost:8080/
-echo (emrun build-web\index.html also works; opening the file directly does not: browsers won't load .data/.wasm over file://)
+echo Done: build-web\demos\<demo>\index.html
+echo To run:  python -m http.server 8080 -d build-web\demos   and open  http://localhost:8080/showcase/
+echo (emrun build-web\demos\showcase\index.html also works; opening the file directly does not: browsers won't load .data/.wasm over file://)

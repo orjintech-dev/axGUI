@@ -22,6 +22,7 @@ First public version: the library together with its demo app, desktop and WebAss
 - **Mouse wheel latch**: once a window starts scrolling, the wheel stays with it until scrolling stops (`gui.wheelLatchDelay`).
 - **WebAssembly build** (Emscripten, WebGL 2) through CMake, with an HTML shell in `web/`.
 - Demo: screen-size based window layout, English / Turkish switch, drawn icons, rich text window.
+- Project layout: the library sources are directly in `src/` (with `rich/` and `sdf2d/`), demos live in `demos/<name>/` (`demos/showcase` is the former demo app). CMake builds the library as the `axgui` static target and each demo with `axgui_add_demo()`; qmake uses `axGUI.pro` (subdirs) with `src/axGUI.pri` and `libs/raylib.pri`.
 
 ### Changed
 - The main class is now `axGUI` (was `myNanoGui`).

@@ -1,6 +1,6 @@
 # axGUI
 
-A lightweight immediate-mode C++ GUI library on top of [raylib](https://www.raylib.com) — with an anti-aliased vector renderer, a rich-text editor and a live style editor. This repository holds the library (`src/axGUI`) and its demo / development app.
+A lightweight immediate-mode C++ GUI library on top of [raylib](https://www.raylib.com) — with an anti-aliased vector renderer, a rich-text editor and a live style editor. This repository holds the library (`src/`) and its demos (`demos/`).
 
 **[▶ Live demo (WebAssembly)](https://aoktar.net/soft/axGUI-demo/)**
 
@@ -41,7 +41,7 @@ while (!WindowShouldClose()) {
     EndDrawing();
 }
 ```
-See `src/main.cpp` for a tour of every widget.
+See `demos/showcase/main.cpp` for a tour of every widget.
 
 ## Building
 
@@ -54,15 +54,15 @@ cmake --build build -j
 ```
 On Windows with MinGW add `-G "MinGW Makefiles"`. On Linux, GLFW needs the X11 development packages (`libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev`).
 
-**qmake / Qt Creator** — open `axGUI-demo.pro` with any MinGW / Clang kit (Qt itself is not linked).
+**qmake / Qt Creator** — open `axGUI.pro` with any MinGW / Clang kit (Qt itself is not linked). To use axGUI in your own qmake app: `include(src/axGUI.pri)` and `include(libs/raylib.pri)`; with CMake, link the `axgui` target.
 
 **Web (Emscripten)**
 ```
 emcmake cmake -S . -B build-web -DCMAKE_BUILD_TYPE=Release
 cmake --build build-web -j
-python -m http.server 8080 -d build-web     # open http://localhost:8080/
+python -m http.server 8080 -d build-web/demos     # open http://localhost:8080/showcase/
 ```
-Output: `index.html` + `axGUI-demo.js / .wasm / .data`. Windows shortcut: `web\build-web.bat [emsdk folder]`.
+Each demo gets its own folder with `index.html` + `<demo>.js / .wasm / .data` (e.g. `build-web/demos/showcase/`). Windows shortcut: `web\build-web.bat [emsdk folder]`.
 
 ## Demo keys
 
@@ -75,10 +75,12 @@ Command line: `--lang tr`, `--light`, `--style`, `--size WxH`, `--screenshot out
 
 | Path | Contents |
 |---|---|
-| `src/axGUI/` | The library: `axGuiSystem` (widgets, windows), `axDrawBot.h` (renderer), `axGUITextBox`, `axGUITable`, `axGUIStyle` |
-| `src/axGUI/rich/` | Rich text: document model, editor, HTML, clipboard, fonts |
-| `src/axGUI/sdf2d/` | SDF 2D renderer |
-| `src/main.cpp` | Demo application |
+| `src/` | The library: `axGuiSystem` (widgets, windows), `axDrawBot.h` (renderer), `axGUITextBox`, `axGUITable`, `axGUIStyle` |
+| `src/rich/` | Rich text: document model, editor, HTML, clipboard, fonts |
+| `src/sdf2d/` | SDF 2D renderer |
+| `src/axGUI.pri` | qmake include for the library |
+| `demos/showcase/` | Showcase demo (every widget, style editor, rich text, drawing) |
+| `demos/demo.pri`, `libs/raylib.pri` | Shared qmake settings for demos / raylib |
 | `libs/` | raylib 6.0 (unmodified), nlohmann/json |
 | `resources/` | Roboto fonts, icon atlas |
 | `web/` | HTML shell and build scripts for WebAssembly |
