@@ -67,6 +67,60 @@ enum ItemType {
 //     std::vector<cString> items; // for combobox
 // };
 
+enum axLayoutType {
+    AX_LAYOUT_FREE = 0,     // flow: left to right, wrapping by the flags
+    AX_LAYOUT_GRID,         // columns: each item goes into the next cell
+    AX_LAYOUT_HORIZONTAL,   // single row, never wraps (toolbar)
+    AX_LAYOUT_VERTICAL,     // each item on its own row (form, list)
+};
+
+enum axLayoutFlags {
+    AX_LAYOUT_NONE = 0,
+    AX_LAYOUT_AUTO_NEWLINE = 1<<0,   // FREE: an item that does not fit goes to the next row (WIN_AUTO_NEWLINE)
+    AX_LAYOUT_NO_SAMELINE  = 1<<1,   // FREE: each item on a new row unless sameline() (WIN_NO_SAMELINE)
+    AX_LAYOUT_FILL_W       = 1<<2,   // an item with automatic width fills the remaining width / the cell
+};
+
+struct Layout
+{
+    rect  area;                 // content rect (as layoutArea)
+    axLayoutType   type = AX_LAYOUT_FREE;
+    axLayoutFlags  flag = AX_LAYOUT_NONE;
+
+    // cursor
+    vec2  cursor;               // where the next item goes (as curPos)
+    vec2  lastPos, lastSize;    // last item (as curPos0, curSize0)
+    float lineH = 0;            // height of the current row (grid: tallest item in the row)
+    bool  sameLine = false;     // as mSameLine
+    vec2  spacing;              // item spacing (as itemSpaceX / Y)
+    vec2  contentMax;           // right / bottom extent reached (content size, scrolling)
+
+    // grid
+    int   cols = 0;             // number of columns
+    int   rows = 0;
+    std::vector<float> colX, colW;   // resolved column starts and widths
+    int   col = 0, row = 0;              // column / row of the next cell
+    int   span = 1;             // columns the next item spans
+    float rowY = 0;             // top of the current row
+    // saved by beginGrid, restored by endGrid
+    vec2  outerCursor;          // cursor after the grid on the outer row
+    float outerLineH = 0;       // outer row height before the grid
+    rect  outerArea;            // outer layoutArea (cells keep its top / bottom for visibility tests)
+    const char *win = nullptr;  // window the grid belongs to; items of inner windows / group boxes are not cells
+    size_t grpDepth = 0;        // group box depth at beginGrid
+    int   id = 0;               // grid id (state kept between frames)
+    int   valign = BOT_ALIGN_TOP;   // vertical alignment in the row: BOT_ALIGN_TOP / MIDDLE / BOTTOM
+    std::vector<float> rowH;    // row heights measured this frame
+};
+
+// Grid state kept between frames: row heights are known only after a row is drawn, so vertical alignment
+// uses the previous frame's heights (one frame late when the content changes).
+struct GridMemory
+{
+    std::vector<float> rowH;    // row heights of the previous frame
+    float h = 0;                // total height of the previous frame
+};
+
 struct GroupStyle
 {
     float bevel;
@@ -274,26 +328,6 @@ enum WinFlags_ {
 
 typedef int WinFlags;
 
-struct LayoutStateGuard
-{
-    WinFlags &flags;
-    vec2  &curPos, &curPos0, &nextPos;
-    rect  &layoutArea;
-    WinFlags sFlags;
-    vec2   sCurPos, sCurPos0, sNextPos;
-    rect   sLayoutArea;
-
-    LayoutStateGuard(WinFlags &f, vec2& cp, vec2& cp0, vec2& np, rect& la)
-        : flags(f), curPos(cp), curPos0(cp0), nextPos(np), layoutArea(la),
-        sFlags(f), sCurPos(cp), sCurPos0(cp0), sNextPos(np), sLayoutArea(la) {}
-
-    ~LayoutStateGuard() noexcept {
-        curPos     = sCurPos;
-        curPos0    = sCurPos0;
-        nextPos    = sNextPos;
-        layoutArea = sLayoutArea;
-    }
-};
 
 struct TabItemInfo {
     std::string label;
@@ -391,7 +425,7 @@ struct WindowState
     vec2 pos, size, relPos;
     vec2 anchor;      // inner window: origin of the position (parent window's cursor + scroll); pos = anchor + relPos
     vec2 minSize = vec2(100,50);
-    vec2 curPos, curPos0, nextPos = vec2(0,0);
+    vec2 curPos, curPos0;
     rect sLayoutArea;
     void setGeometry(const vec2 &p, const vec2 &s) { pos=p; size=s; sLayoutArea=rect(p,s); }
     void setMargins(float mx, float my) { sLayoutArea = rect(pos.x+mx, pos.y+my, size.x-2*mx, size.y-2*my); }
@@ -401,7 +435,7 @@ struct WindowState
     rect resizeLeftArea() { return rect(pos, vec2(6,size.y)); }
     rect resizeBottomArea() { return rect(pos+vec2(0,size.y-6), vec2(size.x,6)); }
     rect resizeTopArea() { return rect(pos, vec2(size.x,6)); }
-    rect titleArea() { return rect(pos,vec2(size.x,titleBarH)); }
+    rect titleArea() { return rect(pos+vec2(1,1),vec2(size.x-2,titleBarH-2)); }
     rect layoutArea()
     {
         rect r = sLayoutArea;
@@ -447,7 +481,8 @@ class axGUI
 {
     enum { HNDL_NONE=0, HNDL_TOP=1, HNDL_BOTTOM=2, HNDL_LEFT=3, HNDL_RIGHT=4, HNDL_BOTRIGHT=5, HNDL_TOPLEFT, HNDL_TOPRIGHT, HNDL_BOTLEFT };
     rect winClip;
-    vec2 curPos, curPos0, nextPos = vec2(0,0);
+    vec2 curPos, curPos0;        // layout cursor (where the next item goes) and the position of the last item
+    vec2 curSize0 = vec2(0,0);   // size of the last item placed by advanceCursor
     WindowState moveRefWin, hoverWin;
     bool winFocused = false, winHovered = false;
     const char *prWinName=NULL;     //--- current window's parent window name
@@ -472,7 +507,6 @@ class axGUI
         int          currentTabIndex = -1;
         float        contentEndY = 0.0f;   // Y position where the content ends
         vec2         savedCurPos;           // cursor before beginTabBar
-        vec2         savedNextPos;
     };
     std::vector<ActiveTabBar> tabBarStack;
 public:
@@ -486,7 +520,8 @@ public:
     const char *focusWinName=NULL;
     const char *scrollWinName=NULL;  //--- scrolling window name
     WinFlags winflag=WIN_AUTO_NEWLINE;
-    bool debug=false;
+    bool debug=true;
+    bool debugLayout=false;   // outline every item placed by advanceCursor (layout debugging)
     bool mNewLine=false, mSameLine=false;
     bool overGUI = false, proc=false;
     bool useInput = true;
@@ -558,7 +593,8 @@ public:
     bool msrightAction; // current mouse right state
     bool msLeftPressed, msLeftDown, msLeftReleased;
     bool msRightPressed, msRightDown, msRightReleased;
-    bool msAnyPressed, msAnyReleased;
+    bool msMidDown;
+    bool msAnyPressed, msAnyReleased, msAnyDown;
     float msWheel=0;                 // this frame's mouse wheel; a widget that consumes the wheel sets it to 0 (so the window does not scroll)
     float wheelStep=48;              // window scrolling: px per wheel notch
     float wheelSmooth=0.08f;         // wheel scrolling eases toward its target with this time constant (s); 0: instant
@@ -576,7 +612,7 @@ public:
     // text position: false (default) = pixel-snapped, fractional (smooth) in a window while its collapse animation runs;
     // true = always smooth (static text softens slightly at fractional positions).
     bool smoothText=false;
-    bool winSnap=true;   // snap to the edges of other windows and the screen when moving / resizing windows
+    bool winSnap=false;   // snap to the edges of other windows and the screen when moving / resizing windows
     float hoverDuration=0.25f;   // button / section hover transition (s); 0: instant
     std::unordered_map<int, CollapseAnim> collapseAnims;
     std::vector<CollapseFrame> collapseStack;
@@ -619,6 +655,8 @@ public:
     std::stack<rect> layoutStack, clipStack;
     std::stack<vec2> scrollStack;
     std::vector<vec2> snapPts;
+    std::stack<Layout> layouts;
+    std::unordered_map<int, GridMemory> gridMemory;   // per grid id
 
     axGUI();
 
@@ -640,6 +678,7 @@ public:
 
     vec2 cursorPos();
     vec2 lastItemPos();
+    vec2 lastItemSize();   // size of the last item (as passed to advanceCursor)
 
     void newline(float lineH=0);
     void spacerV(float lineH=0);
@@ -649,9 +688,16 @@ public:
     void toBeginOfline();
 
     ///---------------------------------------------------------------------
-    void advanceCursor(vec2 size);
+    // Places an item of the given size and returns its position. Widgets call it before drawing, with their final size:
+    // WIN_AUTO_NEWLINE wraps the row when the item does not fit, WIN_NO_SAMELINE starts a new row unless sameline() was called.
+    // The cursor then moves past the item (same row).
+    // size is in/out: in a grid with AX_LAYOUT_FILL_W an item whose width is automatic (fillW, or size.x <= 0)
+    // gets the cell width, and the widget draws with it.
+    vec2 advanceCursor(vec2 &size, bool fillW = false);
+    vec2 advanceCursor(const vec2 &size);       // size stays as given (temporaries)
 
-    bool outOfLayoutArea(const vec2 &size);
+    bool outOfLayoutArea(const vec2 &size);                    // item at the cursor
+    bool outOfLayoutArea(const vec2 &pos, const vec2 &size);   // item at pos (from advanceCursor)
 
     ///---------------------------------------------------------------------
     void setfont(const cString &face, float sz);
@@ -724,14 +770,18 @@ public:
     void resetScroll(const char *id);
 
 
-    void pushWinStack();
+    void pushLayout();
 
-    void popWinStack();
+    void popLayout();
 
     ///---------------------------------------------------------------------
     bool isInsideLayout();
 
     void sameline();
+
+    // valign: vertical alignment of items in their row (BOT_ALIGN_TOP / BOT_ALIGN_MIDDLE / BOT_ALIGN_BOTTOM)
+    bool beginGrid(const char *title, int cols, int rows = 0, int valign = BOT_ALIGN_TOP);   // rows: unused (row heights follow the content)
+    void endGrid();
 
     bool beginGroupBox(const char* title, vec2 size, bool collapsible = true,
                        int scrollable = 0, const GroupStyle &st={}, const char* hint = NULL);
@@ -772,6 +822,7 @@ public:
     bool comboBox(const vec2 &size, const std::vector<IdStrPair> &items, int &value, const char* hint=NULL);
 
     //---- size.x=0 auto width
+    ItemState& empty(vec2 size=vec2(0,0));
     ItemState& dummy(vec2 size=vec2(0,0), const char *hint=NULL);
 
     bool buttonHovered(const vec2 &pos, const vec2 &size);
@@ -790,6 +841,17 @@ public:
     bool toggleButton(const char *text, bool* value, vec2 size=vec2(0,0), const char *hint=NULL);
 
     bool imageButton(const std::string& name, vec2 size, cColor tint=cColor(255), const char *hint=NULL);
+
+    // Icon: an icon / texture registered with axDrawBot (addIconFromTexture, addIconFromDrawing, atlas cells), drawn
+    // aspect-fit and centered in the item. size.x = 0: from the height and the aspect ratio (fills the cell in a grid);
+    // size.y = 0: from the width; both 0: the image's own pixel size. Returns true when clicked.
+    bool icon(const std::string& name, vec2 size = vec2(0,0), const char *hint=NULL);
+
+    // Image from a file (png, jpg...): loaded on the first call and cached by path, then drawn like icon().
+    // A file that cannot be loaded is not retried; a frame is drawn instead.
+    bool image(const std::string& path, vec2 size = vec2(0,0), const char *hint=NULL);
+    void unloadImageFiles();                      // frees the textures loaded by image() (call before CloseWindow)
+    std::unordered_map<std::string, bool> imageFiles;   // path -> loaded (false: failed, not retried)
 
     bool imageButton(IconDef &def, vec2 size, cColor tint=cColor(255), const char *hint=NULL);
 
@@ -872,3 +934,4 @@ private:
 
 
 #endif // AXGUISYSTEM_H
+

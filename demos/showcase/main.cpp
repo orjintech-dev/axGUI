@@ -661,16 +661,14 @@ static void catalogWindow(axGUI &gui, Demo &d)
         static const char *ch[] = { "R", "G", "B", "A" };
         static const cColor chc[] = { cColor(230, 60, 60), cColor(60, 200, 90), cColor(60, 120, 240), cColor(180, 180, 180) };
         for (int i = 0; i < 4; i++) {
-            // value label before the slider: WIN_AUTO_NEWLINE assumes the next item has the same width,
-            // so it wraps to a new line after a wide item
             gui.label(ch[i], vec2(18, 20));
             gui.label(TextFormat("%3.0f", d.rgba[i]), vec2(36, 20));
             gui.drawColorSlider(vec2(0, 4), vec2(W - 90, 12), &d.rgba[i], 255, chc[i]);
             gui.newline();
         }
         cColor mix((int)d.rgba[0], (int)d.rgba[1], (int)d.rgba[2], (int)d.rgba[3]);
-        gui.bot->roundedFRect(gui.cursorPos(), vec2(W, 26), 5, mix, 1, gui.colors[GUI_WIN_BORDERCLR]);
-        gui.advanceCursor(vec2(W, 26));
+        const vec2 mp = gui.advanceCursor(vec2(W, 26));   // place first, then draw at the returned position
+        gui.bot->roundedFRect(mp, vec2(W, 26), 5, mix, 1, gui.colors[GUI_WIN_BORDERCLR]);
         gui.newline();
         gui.endSection();
     }

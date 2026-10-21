@@ -3,6 +3,7 @@
 # Each demo compiles axGUI and raylib 6.0 from source (src/axGUI.pri, libs/raylib.pri).
 
 TEMPLATE = subdirs
-SUBDIRS += demos/showcase
+SUBDIRS += demos/showcase \
+           demos/layouts
 
 DISTFILES += README.md CHANGELOG.md CMakeLists.txt

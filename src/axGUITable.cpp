@@ -170,11 +170,12 @@ bool axGUI::table(TableState &st, vec2 size, const std::vector<TableColumn> &col
     const bool hasHeader = flags & TBL_HEADER;
     const float headH = hasHeader ? (style.headerH > 0 ? style.headerH : rowH) : 0;
     const float padX = style.padX;
+    const bool autoW = size.x <= 0;
     if (size.x <= 0) size.x = std::max(60.0f, getContainerWidth() - (curPos.x - layoutArea.left()));
     if (size.y <= 0) size.y = headH + std::max(rows, 1) * rowH + 2;   // everything visible
 
-    vec2 pos = curPos;
-    if (outOfLayoutArea(size)) { advanceCursor(size); return false; }
+    vec2 pos = advanceCursor(size, autoW);
+    if (outOfLayoutArea(pos, size)) return false;
     const vec2 spos = pos + winScroll;                 // screen position
     const float viewW = size.x, bodyH = size.y - headH;
 
@@ -559,6 +560,5 @@ bool axGUI::table(TableState &st, vec2 size, const std::vector<TableColumn> &col
 
     ItemState &item = itemStates[myID];
     item.set("table", spos, size, hovered, focusID == myID, rad);
-    advanceCursor(size);
     return st.selectionChanged || st.activatedRow >= 0 || st.sortChanged || st.clickedRow >= 0 || st.rightClickedRow >= 0;
 }

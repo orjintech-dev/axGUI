@@ -64,30 +64,30 @@ bool axGUI::isPointInRec(vec2 pt, vec2 pos, vec2 size)
     return false;
 }
 
-void axGUI::setCursor(vec2 p)    {  nextPos=p;  curPos=p; }
+void axGUI::setCursor(vec2 p)    {  curPos=p; }
 
-void axGUI::setCursorX(float x)  {  nextPos.x=x;  curPos.x=x; }
+void axGUI::setCursorX(float x)  {  curPos.x=x; }
 
 vec2 axGUI::cursorPos()    {  return curPos;    }
 
 vec2 axGUI::lastItemPos()  {  return curPos0;    }
 
+vec2 axGUI::lastItemSize() {  return curSize0;   }
+
 //----------------------------------------------------
 void axGUI::newline(float lineH)
 {
-    nextPos.x = layoutArea.left();
-    nextPos.y += lineHMax+itemSpaceY;
+    curPos.x = layoutArea.left();
+    curPos.y += lineHMax+itemSpaceY;
     if(lineH) lineHMax = lineH;
     else lineHMax = 0;
-    curPos=nextPos;
 }
 
 //----------------------------------------------------
 void axGUI::spacerV(float lineH)
 {
     curPos.x = layoutArea.left();
-    curPos.y = nextPos.y+lineH;
-    nextPos = curPos;
+    curPos.y += lineH;
     newline();
 }
 
@@ -100,56 +100,92 @@ void axGUI::setLineH(float lineH)
 //----------------------------------------------------
 void axGUI::spacerH(float spaceX)
 {
-    nextPos.x += spaceX;
-    curPos.x = nextPos.x;
+    curPos.x += spaceX;
 }
 
 //----------------------------------------------------
-void axGUI::toBeginOfline() { curPos.x = layoutArea.left(); nextPos.x = layoutArea.left(); }
+void axGUI::toBeginOfline() { curPos.x = layoutArea.left(); }
 
 //----------------------------------------------------
-void axGUI::advanceCursor(vec2 size)
-{
-    curPos0 = curPos;
-    nextPos.x += size.x + itemSpaceX;
-    lineHMax = std::max(lineHMax, size.y);
+vec2 axGUI::advanceCursor(const vec2 &size) { vec2 s = size; return advanceCursor(s); }
 
-    if(layoutArea.size!=vec2(0,0))
+vec2 axGUI::advanceCursor(vec2 &size, bool fillW)
+{
+    // grid: the item goes into the next cell; the row ends after the last column and is as tall as its tallest item
+    bool inGrid = false;
+    if(!layouts.empty())
     {
-        if(winflag&WIN_AUTO_NEWLINE)
+        Layout &ly = layouts.top();
+        if(ly.type==AX_LAYOUT_GRID && ly.win==prWinName && ly.grpDepth==groupBoxStack.size())
         {
-            if(nextPos.x+size.x>layoutArea.right())  { mNewLine=true;  }
-            else mNewLine=false;
+            inGrid = true;
+            if(ly.col >= ly.cols)                       // previous row is full: start the next one
+            {
+                ly.rowH.push_back(ly.lineH);
+                ly.col = 0;
+                ly.row++;
+                ly.rowY += ly.lineH + itemSpaceY;
+                ly.lineH = 0;
+            }
+            const float w = (ly.area.size.x - (ly.cols - 1) * itemSpaceX) / ly.cols;   // column width (itemSpaceX between columns)
+            if((ly.flag & AX_LAYOUT_FILL_W) && (fillW || size.x <= 0)) size.x = w;
+            float dy = 0;                               // vertical alignment with the previous frame's row height
+            if(ly.valign & (BOT_ALIGN_MIDDLE|BOT_ALIGN_BOTTOM))
+            {
+                auto it = gridMemory.find(ly.id);
+                if(it != gridMemory.end() && ly.row < (int)it->second.rowH.size())
+                {
+                    float free = std::max(0.0f, it->second.rowH[ly.row] - size.y);
+                    dy = (ly.valign & BOT_ALIGN_MIDDLE) ? floorf(free * 0.5f) : free;
+                }
+            }
+            curPos = vec2(ly.area.left() + ly.col * (w + itemSpaceX), ly.rowY + dy);
+            // cell area: cell columns, outer area's top / bottom (wrapping off, visibility tests still work)
+            layoutArea = rect(curPos.x + winScroll.x, ly.outerArea.top(), w, ly.outerArea.size.y);
+            ly.lineH = std::max(ly.lineH, size.y);
+            ly.col++;
+            if(debugLayout) bot->roundedRect(vec2(curPos.x, ly.rowY), vec2(w, size.y + dy), 0, 0.5f, cColor(255,160,0,200));
         }
-        else if(winflag&WIN_NO_SAMELINE && !mSameLine)  mNewLine=true;
-        else mNewLine=false;
     }
-    curPos.x = nextPos.x;
-    if(mNewLine)
+    // wrap before the item: decided with this item's own size (never with a guess about the next one)
+    if(!inGrid && layoutArea.size!=vec2(0,0) && curPos.x > layoutArea.left()+0.5f)
     {
-        curPos.x = layoutArea.left();
-        curPos.y += lineHMax+itemSpaceY;
-        lineHMax = 0;
-        nextPos = curPos;
+        bool wrap = false;
+        if(winflag&WIN_AUTO_NEWLINE)      wrap = curPos.x + size.x > layoutArea.right()+0.5f;
+        else if(winflag&WIN_NO_SAMELINE)  wrap = !mSameLine;
+        if(wrap) newline();
     }
+    mSameLine=false;
+    mNewLine=false;
+
+    const vec2 pos = curPos;
+    curPos0 = pos;
+    curSize0 = size;
+    if(debugLayout)
+    {
+        bot->roundedFRect(pos, size, 0, cColor(255,160,0,28));
+        bot->roundedRect(pos, size, 0, 1, cColor(255,160,0,200));
+        bot->roundedFRect(pos+vec2(size.x,0), vec2(itemSpaceX,size.y), 0, cColor(0,200,255,60));   // horizontal item spacing
+    }
+    lineHMax = std::max(lineHMax, size.y);
+    curPos.x = pos.x + size.x + itemSpaceX;
     if(prWinName)
     {
         WindowState &win = windowStates[prWinName];
         win.curPos = curPos;
-        win.nextPos = curPos;
     }
-    // if(debug) bot->circle(curPos,1,cRed);
-    mSameLine=false;
+    return pos;
 }
 
 //-------------------------------------------------------------------------
-bool axGUI::outOfLayoutArea(const vec2 &size)
+bool axGUI::outOfLayoutArea(const vec2 &size) { return outOfLayoutArea(curPos, size); }
+
+bool axGUI::outOfLayoutArea(const vec2 &pos, const vec2 &size)
 {
     if(layoutArea.size!=vec2(0,0))
     {
-        // if(curPos.x>layoutArea.right()) return true;
-        if(curPos.y+winScroll.y+size.y<layoutArea.top()) return true;
-        if(curPos.y+winScroll.y>layoutArea.bottom()) return true;
+        if(pos.y+winScroll.y+size.y<layoutArea.top()) return true;
+        if(pos.y+winScroll.y>layoutArea.bottom()) return true;
     }
     return false;
 }
@@ -198,11 +234,12 @@ void axGUI::startFrame(bool retained)
     frameCnt++;
     winFocused = winHovered = true;
     winOrder=0;
-    nextPos = curPos = vec2(0,0);
+    curPos = vec2(0,0);
     msPre = ms;
     ms = vec2(GetMousePosition().x, GetMousePosition().y);
     msLeftPressed = IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
     msLeftDown = IsMouseButtonDown(MOUSE_LEFT_BUTTON);
+    msMidDown = IsMouseButtonDown(MOUSE_MIDDLE_BUTTON);
     msLeftReleased = IsMouseButtonReleased(MOUSE_LEFT_BUTTON);
     msRightPressed = IsMouseButtonPressed(MOUSE_RIGHT_BUTTON);
     msRightDown = IsMouseButtonDown(MOUSE_RIGHT_BUTTON);
@@ -238,6 +275,7 @@ void axGUI::startFrame(bool retained)
 
     msAnyReleased = msLeftReleased || msRightReleased;
     msAnyPressed = msLeftPressed || msRightPressed;
+    msAnyDown = msLeftDown || msMidDown || msRightDown;
 
     int focusWinOrder = 0;
     if(focusWinName) focusWinOrder = windowStates[focusWinName].zOrder;
@@ -518,7 +556,7 @@ void axGUI::endFrame()
     for(auto it=itemStates.begin(); it!=itemStates.end(); )
     {
         ItemState &s = it->second;
-        if(debug) bot->roundedRect(s.pos, s.size, 0, 1, cRed);
+        // if(debug) bot->roundedRect(s.pos, s.size, 0, 1, cRed);
         // if(debug) bot->text(axFormat("%d: %s  %.0f,%.f",i++, s.name.c_str(), s.pos.x,s.pos.y), vec2(0,y), 12, cGreen);
         y-=14;
         if(it->second.frame!=frameCnt)  it = itemStates.erase(it);
@@ -552,24 +590,24 @@ void axGUI::endFrame()
 
     if(debug)
     {
+        for (auto& [id, s] : itemStates) {
+            bool valid = (s.frame==frameCnt);
+            cColor c(120,200,120,64);
+            if(s.hovered) c = cColor(200,200,120);
+            if(s.focused) c = cColor(100,220,120);
+            bot->roundedRect(s.pos, s.size, 0, 1, c);
+            // bot->roundedRect(s.pos-vec2(2,2), s.size+vec2(4,4), 0, 2, cColor(255,0,0,100));
+            // text(axFormat("ID:%d, name:%s, hover:%d, focus:%d",id, s.name.c_str(), s.hovered, s.focused), p.x, p.y+=12, 12, c);
+        }
         if(hoverID) {
             auto &s = itemStates[hoverID];
-            bot->roundedRect(s.pos, s.size, s.rad, 2, cRed);
+            bot->roundedRect(s.pos-vec2(2,2), s.size+vec2(4,4), 0, 1, cRed);
         }
         if(hoverWinName)
         {
             auto &win = windowStates[hoverWinName];
             bot->roundedRect(win.pos, win.size, 8, 2, cColor(200,200,100));
             bot->text(S(win.name)+":"+LS(win.zOrder),win.pos-vec2(0,15),12,cGreen);
-        }
-        for (auto& [id, s] : itemStates) {
-            bool valid = (s.frame==frameCnt);
-            cColor c(120,200,120,64);
-            if(s.hovered) c = cColor(200,200,120);
-            if(s.focused) c = cColor(100,220,120);
-            bot->roundedRect(s.pos, s.size, 0, 2, c);
-            // bot->roundedRect(s.pos-vec2(2,2), s.size+vec2(4,4), 0, 2, cColor(255,0,0,100));
-            // text(axFormat("ID:%d, name:%s, hover:%d, focus:%d",id, s.name.c_str(), s.hovered, s.focused), p.x, p.y+=12, 12, c);
         }
     }
 }
@@ -753,77 +791,6 @@ WindowState &axGUI::beginWindow(const char *name, vec2 &pos, vec2 &size, WinFlag
         // hoverID=ID;
     }
 
-    // if(mouseMoved && moveWinID==ID && msLeftDown)
-    // {
-    //     vec2 p = ms - msDown + moveRefWin.pos;
-    //     vec2 snap1 = snapToWindows(win, p);
-    //     vec2 snap2 = snapToWindows(win, p + win.size);
-    //     vec2 snap(0, 0);
-
-    //     // Pick closer snap per axis
-    //     if(snap1.x != 0 && (snap2.x == 0 || fabs(snap1.x) < fabs(snap2.x)))   snap.x = snap1.x;
-    //     else  snap.x = snap2.x;
-
-    //     if(snap1.y != 0 && (snap2.y == 0 || fabs(snap1.y) < fabs(snap2.y)))   snap.y = snap1.y;
-    //     else   snap.y = snap2.y;
-
-    //     p += snap;
-
-    //     if(prWinName) win.relPos = p-curPos-winScroll;
-    //     win.setGeometry(p,size);
-    //     pos = win.pos;
-    //     size = win.size;
-    //     proc=true;
-    // }
-
-    // if(mouseMoved && resizeWinID==ID && msLeftDown)
-    // {
-    //     int hndl = winResizeHndl;
-    //     vec2 p = moveRefWin.pos;
-    //     vec2 s = moveRefWin.size;
-    //     vec2 dif = (ms - msDown) * winResizeFactor;
-
-    //     // Left edge
-    //     if(hndl == HNDL_LEFT || hndl == HNDL_TOPLEFT || hndl == HNDL_BOTLEFT)
-    //     {
-    //         p.x += dif.x;
-    //         s.x -= dif.x;
-    //         vec2 snap = snapToWindows(win, p);
-    //         p.x += snap.x;
-    //         s.x -= snap.x;
-    //     }
-    //     // Right edge
-    //     if(hndl == HNDL_RIGHT || hndl == HNDL_TOPRIGHT || hndl == HNDL_BOTRIGHT)
-    //     {
-    //         s.x += dif.x;
-    //         vec2 snap = snapToWindows(win, p + s);
-    //         s.x += snap.x;
-    //     }
-    //     // Top edge
-    //     if(hndl == HNDL_TOP || hndl == HNDL_TOPLEFT || hndl == HNDL_TOPRIGHT)
-    //     {
-    //         p.y += dif.y;
-    //         s.y -= dif.y;
-    //         vec2 snap = snapToWindows(win, p);
-    //         p.y += snap.y;
-    //         s.y -= snap.y;
-    //     }
-    //     // Bottom edge
-    //     if(hndl == HNDL_BOTTOM || hndl == HNDL_BOTLEFT || hndl == HNDL_BOTRIGHT)
-    //     {
-    //         s.y += dif.y;
-    //         vec2 snap = snapToWindows(win, p + s);
-    //         s.y += snap.y;
-    //     }
-
-    //     s.x = std::max(s.x, 100.0f);
-    //     s.y = std::max(s.y, 50.0f);
-    //     win.setGeometry(p, s);
-    //     pos = win.pos;
-    //     size = win.size;
-    //     proc = true;
-    // }
-
     if(msLeftReleased) { moveWinID=resizeWinID=0; }
 
     win.setMargins(8,4);
@@ -834,8 +801,7 @@ WindowState &axGUI::beginWindow(const char *name, vec2 &pos, vec2 &size, WinFlag
     // win.winID = id;
     prWinName = name;
     layoutArea = win.layoutArea();
-    nextPos = layoutArea.pos;
-    curPos = curPos0 = nextPos;
+    curPos = curPos0 = layoutArea.pos;
     winScroll = win.scroll;
     winflag = flags;
     ignoreScroll = moveWinID|resizeWinID;
@@ -851,7 +817,7 @@ WindowState &axGUI::beginWindow(const char *name, vec2 &pos, vec2 &size, WinFlag
     //---- draw window title bar ----
     if(flags&WIN_TITLE_BAR) {
         // cString fs = bot->fontManager.currentFontName;
-        bot->roundedFRect(win.titleArea(), curWinBevel, colors[GUI_IDLE_COLOR], 1, colors[GUI_WIN_BORDERCLR]);
+        bot->roundedFRect(win.titleArea(), curWinBevel-1, colors[GUI_IDLE_COLOR], 1, colors[GUI_WIN_BORDERCLR]);
         if(!debug) bot->text(axLabelPart(title), win.pos+vec2(curWinSpcX,(titleBarH-fontSize)/2), fontSize, colors[GUI_TEXT_COLOR]);   // name only, theme color (ID / z: debug)
         else bot->text(win.debugStr(), win.pos+vec2(curWinSpcX,(titleBarH-fontSize)/2), fontSize, colors[GUI_TEXT_COLOR]);
     }
@@ -883,7 +849,7 @@ WindowState &axGUI::beginWindow(const char *name, vec2 &pos, vec2 &size, WinFlag
         }
     }
 
-    if(debug) bot->roundedRect(layoutArea, 0, 0.25, cYellow);
+    if(debug) bot->roundedRect(layoutArea, 0, 1.25, cBlue);
 
     // winClip = rect(win.pos.x+curWinSpcX, win.pos.y+curWinSpcY, size.x-2*curWinSpcX, size.y-2*curWinSpcY);
     winClip = layoutArea;
@@ -910,7 +876,7 @@ void axGUI::endWindow(const char *name)
     if(win.flags & WIN_SCROLLBAR)
     {
         rect la = win.layoutArea();
-        float contentBottom = fmax(curPos.y + lineHMax, nextPos.y);     // unscrolled layout coordinate
+        float contentBottom = curPos.y + lineHMax;     // unscrolled layout coordinate
         float contentH = contentBottom - la.top() + winSpaceY;
         float maxScroll = fmax(0.0f, contentH - la.size.y);
         bool overChild = false;
@@ -983,9 +949,9 @@ void axGUI::endWindow(const char *name)
         winClip = layoutArea;
         winHovered = (winParent.ID == hoverWinID);
         winFocused = (winParent.name == focusWinName);
-        curPos = nextPos = vec2(layoutArea.left(), win.pos.y - winScroll.y + win.size.y + itemSpaceY);
+        curPos = vec2(layoutArea.left(), win.pos.y - winScroll.y + win.size.y + itemSpaceY);
         lineHMax = 0;
-        winParent.curPos = winParent.nextPos = curPos;
+        winParent.curPos = curPos;
     }
     else layoutArea = rect(0,0,0,0);
 
@@ -995,101 +961,115 @@ void axGUI::endWindow(const char *name)
     }
 }
 
-vec2 axGUI::snapToWindows(WindowState &ourWin, vec2 p)
+
+bool axGUI::beginGrid(const char *title, int cols, int rows, int valign)
 {
-    if(!winSnap) return vec2(0, 0);   // snapping off
-    snapPts.clear();
-    snapPts.push_back(vec2(0,0));
-    snapPts.push_back(vec2(GetScreenWidth(), GetScreenHeight()));
+    if(title) genID(axFormat("##grid:%s", axIdPart(title))); else genID();
+    const int gridID = ID;
+    if(cols < 1) cols = 1;
+    // the grid takes the full width on its own row (in a parent grid: its cell); its height is measured in endGrid,
+    // the previous frame's height is used to place it (so a parent row can align it)
+    if(layoutArea.size.x > 0 && curPos.x > layoutArea.left()+0.5f) newline();
+    const float outerLineH = lineHMax;
+    auto mem = gridMemory.find(gridID);
+    vec2 gsz(layoutArea.size.x > 0 ? layoutArea.size.x : 100.0f, mem != gridMemory.end() ? mem->second.h : 0);
+    vec2 pos = advanceCursor(gsz, true);
 
-    // the moving window's child windows (including nested) are not snap targets: they move with it,
-    // so the window would snap to its own child's edge and jitter back and forth every frame
-    auto isDescendant = [&](const WindowState &w) {
-        const char *pr = w.prWinName;
-        for(int depth = 0; pr && depth < 16; depth++) {
-            auto it = windowStates.find(pr);
-            if(it == windowStates.end()) return false;
-            if(it->second.ID == ourWin.ID) return true;
-            pr = it->second.prWinName;
-        }
-        return false;
-    };
+    Layout ly;
+    ly.type = AX_LAYOUT_GRID;
+    ly.flag = AX_LAYOUT_FILL_W;
+    ly.area = rect(pos, vec2(gsz.x, 0));
+    ly.cols = cols;
+    ly.rows = rows;
+    ly.rowY = pos.y;
+    ly.outerCursor = curPos;
+    ly.outerLineH = outerLineH;
+    ly.id = gridID;
+    ly.valign = valign;
+    ly.outerArea = layoutArea;
+    ly.win = prWinName;
+    ly.grpDepth = groupBoxStack.size();
 
-    for(auto &[id, win] : windowStates)
+    pushLayout();                     // layoutArea / winScroll / winClip; the cells change layoutArea
+    layouts.push(ly);
+    lineHMax = 0;
+    return true;
+}
+
+void axGUI::endGrid()
+{
+    if(layouts.empty()) return;
+    Layout ly = layouts.top();
+    layouts.pop();
+    popLayout();
+
+    // measured height: up to the bottom of the last row
+    const float h = (ly.col > 0 || ly.row > 0) ? ly.rowY + ly.lineH - ly.area.top() : 0;
+    if(ly.col > 0) ly.rowH.push_back(ly.lineH);   // last row
+    GridMemory &mem = gridMemory[ly.id];
+    mem.rowH = ly.rowH;
+    mem.h = h;
+    if(debugLayout) bot->roundedRect(ly.area.pos, vec2(ly.area.size.x, h), 0, 1, cColor(255,0,0,160));
+
+    // back on the outer row, after the grid; the outer row is at least as tall as the grid
+    curPos = ly.outerCursor;
+    lineHMax = std::max(ly.outerLineH, h);
+    curPos0 = ly.area.pos;
+    curSize0 = vec2(ly.area.size.x, h);
+    if(!layouts.empty())              // nested grid: the parent row grows with it
     {
-        if(win.ID == ourWin.ID) continue;
-        if(win.flags & WIN_CHILD_WINDOW) continue;
-        if(isDescendant(win)) continue;
-        snapPts.push_back(win.pos);
-        snapPts.push_back(win.pos + win.size);
+        Layout &pr = layouts.top();
+        if(pr.type == AX_LAYOUT_GRID) pr.lineH = std::max(pr.lineH, h);
     }
+    if(prWinName) { WindowState &win = windowStates[prWinName]; win.curPos = curPos; }
+}
 
-    const float threshold = 20.0f;
-    float snapDistX = threshold;
-    float snapDistY = threshold;
-    vec2 dif = vec2(0,0);
-    // vec2 p2 = p + size;
+bool axGUI::beginSection(const char *title)
+{
+    genID(title);
+    ItemState &item = sectionStates[ID];
+    float gap=1.5f*fontSize;
+    float iconsz = 1.0f*fontSize;
+    float w = layoutArea.size.x;
+    if(w<=0) w=100.0f;
+    vec2 size(w,gap);
+    vec2 pos = advanceCursor(size, true);
 
-    for(auto &pt : snapPts)
+    cColor bgClr = colors[GUI_BTN_COLOR];
+    bool hovered = buttonHovered(pos, size);
+    float he = buttonAnim(ID, item, hovered, bgClr, pos);
+    bot->roundedFRect(pos, size, btnRadius, bgClr);
+
+    // The icon is tinted with the theme text color (white would be invisible on a light theme); falls back to a vector triangle without an atlas
     {
-        // Snap left edge
-        if(fabs(p.x - pt.x) < snapDistX) {
-            dif.x = pt.x - p.x;
-            snapDistX = fabs(p.x - pt.x);
+        const char *ic = item.open ? "tri1_icon" : "tri2_icon";
+        vec2 ip = pos + vec2(itemSpaceX, 0.5f*(size.y-iconsz));
+        cColor tc = mixColor(colors[GUI_TEXT_COLOR], colors[GUI_TEXT_HL_COLOR], he);
+        if(bot->hasIcon(ic)) bot->drawIcon(ic, ip, iconsz, tc);
+        else {
+            vec2 c = ip + vec2(iconsz, iconsz) * 0.5f;
+            float r = iconsz * 0.3f;
+            if(item.open) bot->fillTriangle(c + vec2(-r, -r*0.5f), c + vec2(r, -r*0.5f), c + vec2(0, r*0.6f), tc);
+            else          bot->fillTriangle(c + vec2(-r*0.5f, -r), c + vec2(-r*0.5f, r), c + vec2(r*0.6f, 0), tc);
         }
-        // Snap right edge
-        // if(fabs(p2.x - pt.x) < snapDistX) {
-        //     dif.x = pt.x - p2.x;
-        //     snapDistX = fabs(p2.x - pt.x);
-        // }
-        // Snap top edge
-        if(fabs(p.y - pt.y) < snapDistY) {
-            dif.y = pt.y - p.y;
-            snapDistY = fabs(p.y - pt.y);
-        }
-        // Snap bottom edge
-        // if(fabs(p2.y - pt.y) < snapDistY) {
-        //     dif.y = pt.y - p2.y;
-        //     snapDistY = fabs(p2.y - pt.y);
-        // }
     }
-    return dif;
-}
-
-void axGUI::resetScroll(const char *id)
-{
-    WindowState &win = windowStates[axIdPart(id)];
-    win.scroll = vec2(0,0);
-    win.scroll0 = vec2(0,0);
-}
-
-void axGUI::pushWinStack()
-{
-    scrollStack.push(winScroll);
-    layoutStack.push(layoutArea);
-    clipStack.push(winClip);
-}
-
-void axGUI::popWinStack()
-{
-    if (!scrollStack.empty()) {
-        winScroll = scrollStack.top();  // Copy
-        scrollStack.pop();                         // Subtract
+    if(title) {
+        bot->text(axLabelPart(title), pos+vec2(iconsz+2.0f*itemSpaceX,0.5f*(size.y-fontSize)), 0, mixColor(colors[GUI_TEXT_COLOR], colors[GUI_TEXT_HL_COLOR], he), BOT_ALIGN_LEFT|BOT_ALIGN_TOP);
+        // bot->drawLine(vec2(x,y+gap/2),vec2(x+w,y+gap/2),cColor(44),1);
     }
-    if (!layoutStack.empty())   { layoutArea = layoutStack.top();  layoutStack.pop(); }
-    if (!clipStack.empty())   { winClip = clipStack.top();  clipStack.pop();  }
+    // else bot->drawLine(vec2(x,y+gap/2),vec2(x+w,y+gap/2),cColor(44),1);
+    // bot->roundedRect(pos,size,0,1,cRed);
+    item.set(title, pos+winScroll, size, hovered, ID==focusID, 4);
+    bool res = buttonBehavior(item, hovered);
+    newline(0);
+    return beginCollapse(ID, item.open);   // open / close animation
 }
 
-bool axGUI::isInsideLayout()
+void axGUI::endSection(const char *title)
 {
-    return layoutArea.isPointInRec(ms);
-}
-
-void axGUI::sameline()
-{
-    mSameLine=true;
-    curPos.y = nextPos.y;
-    curPos.x = nextPos.x;
+    newline(0);
+    endCollapse();
+    separator(4);
 }
 
 bool axGUI::beginGroupBox(const char *title, vec2 size, bool collapsible, int scrollable, const GroupStyle &st, const char *hint)
@@ -1100,13 +1080,10 @@ bool axGUI::beginGroupBox(const char *title, vec2 size, bool collapsible, int sc
     GroupBoxState& grp = groupBoxStates[ID];
     grp.usedThisFrame = true;
 
-    float headerHeight = 26;
+    float headerHeight = title ? 26 : 0;
     float padding = st.padding;   // GroupStyle::padding
     float w = size.x, h = size.y;
-    float x = curPos.x, y = curPos.y;
-    vec2 pos = curPos;
     vec2 scrolldir = vec2(scrollable==1, scrollable==2);
-    grp.contentStartPos = curPos; // Save the content start
 
     // open / close animation: the frame is between header-only and full height, the body is clipped to that height
     if(!title) grp.isOpen = true;
@@ -1114,6 +1091,16 @@ bool axGUI::beginGroupBox(const char *title, vec2 size, bool collapsible, int sc
     float openE = stepOpenAnim(grp.openT, grp.isOpen);
     bool drawBody = grp.openT > 0;
     bool animating = grp.openT > 0 && grp.openT < 1;
+    float shownH = headerHeight + openE * (h - headerHeight);   // animated height
+
+    // the box takes its place in the outer row; the cursor after it is restored in endGroupBox
+    vec2 bsz(w, shownH);
+    vec2 pos = advanceCursor(bsz, w <= 0);
+    w = bsz.x;
+    float x = pos.x, y = pos.y;
+    grp.contentStartPos = pos;
+    grp.curPos = curPos;
+    grp.size = vec2(w, shownH);
 
     // Save context
     GroupBoxContext context;
@@ -1139,18 +1126,15 @@ bool axGUI::beginGroupBox(const char *title, vec2 size, bool collapsible, int sc
     groupBoxStack.back().headerH = headerHeight;
 
     // Draw outer border
-    float shownH = headerHeight + openE * (h - headerHeight);   // animated height
     cColor shdClr = cColor(220,220,240,0);
     if(st.shadow)
         bot->fillBoxGrad(rect(x-4, y-4, w+8, shownH+8), st.bevel+2, 120, colors[GUI_WIN_BACKCLR]*0.6f, shdClr );
     bot->roundedFRect(x, y, w, shownH, st.bevel, st.fClr, st.stroke, st.sClr);
-    grp.curPos = curPos;
-    grp.size = vec2(w, shownH);
 
     if(title)
     {
         // Header area
-        rect headerRect(curPos+winScroll, vec2(w, headerHeight));
+        rect headerRect(pos+winScroll, vec2(w, headerHeight));
         bool headerHovered = winHovered && headerRect.isPointInRec(ms) && winClip.isPointInRec(ms);   // not if another window is on top
 
         if(headerHovered) hoverID=ID;
@@ -1192,7 +1176,7 @@ bool axGUI::beginGroupBox(const char *title, vec2 size, bool collapsible, int sc
     // Draw body if open (or while opening / closing)
     if(drawBody)
     {
-        pushWinStack();
+        pushLayout();
         bot->save();
         if(animating) useInput = false;   // content takes no input during animation
 
@@ -1274,7 +1258,6 @@ bool axGUI::beginGroupBox(const char *title, vec2 size, bool collapsible, int sc
         // and does not carry the outer row's height (otherwise lineHMax of a large neighboring item pushes the first inner newline down).
         curPos = vec2(x + padding, bodyY + padding);
         lineHMax = 0;
-        nextPos = curPos;
         grp.contentTop = curPos.y;
         // keep the scroll inside the content (drag, inertia, or content that got shorter)
         if(grp.scrollOffset.y > 0 || grp.scrollOffset.y < minScrollY)
@@ -1291,7 +1274,6 @@ bool axGUI::beginGroupBox(const char *title, vec2 size, bool collapsible, int sc
         bot->scissor(winClip);
         bot->translate(winScroll);
     }
-    else nextPos = curPos;
     return drawBody;   // content is drawn while open or opening / closing
 }
 
@@ -1305,10 +1287,10 @@ void axGUI::endGroupBox()
     if(context.isOpen)
     {
         bot->restore();
-        popWinStack();
+        popLayout();
         useInput = context.prevUseInput;
         // Content height: from the first row to the bottom of the last one (layout coordinates, not scrolled)
-        grp.contentHeight = fmax(0.0f, fmax(curPos.y + lineHMax, nextPos.y) - grp.contentTop);
+        grp.contentHeight = fmax(0.0f, curPos.y + lineHMax - grp.contentTop);
 
         // Draw scrollbar (optional; not drawn while opening / closing)
         if(context.scrollable && !context.animating)
@@ -1345,10 +1327,106 @@ void axGUI::endGroupBox()
     }
     // bot->circle(curPos,3,cBlue);
     // bot->circle(grp.nextPos,3,cRed);
-    setCursor(grp.curPos);
-    lineHMax = groupBoxStack.back().outerLineH;   // restore outer row height
-    advanceCursor(grp.size);
+    setCursor(grp.curPos);                        // after the box, on the outer row
+    lineHMax = groupBoxStack.back().outerLineH;   // restore outer row height (includes the box)
+    if(prWinName) { WindowState &win = windowStates[prWinName]; win.curPos = curPos; }
     groupBoxStack.pop_back();
+}
+
+
+vec2 axGUI::snapToWindows(WindowState &ourWin, vec2 p)
+{
+    if(!winSnap) return vec2(0, 0);   // snapping off
+    snapPts.clear();
+    snapPts.push_back(vec2(0,0));
+    snapPts.push_back(vec2(GetScreenWidth(), GetScreenHeight()));
+
+    // the moving window's child windows (including nested) are not snap targets: they move with it,
+    // so the window would snap to its own child's edge and jitter back and forth every frame
+    auto isDescendant = [&](const WindowState &w) {
+        const char *pr = w.prWinName;
+        for(int depth = 0; pr && depth < 16; depth++) {
+            auto it = windowStates.find(pr);
+            if(it == windowStates.end()) return false;
+            if(it->second.ID == ourWin.ID) return true;
+            pr = it->second.prWinName;
+        }
+        return false;
+    };
+
+    for(auto &[id, win] : windowStates)
+    {
+        if(win.ID == ourWin.ID) continue;
+        if(win.flags & WIN_CHILD_WINDOW) continue;
+        if(isDescendant(win)) continue;
+        snapPts.push_back(win.pos);
+        snapPts.push_back(win.pos + win.size);
+    }
+
+    const float threshold = 20.0f;
+    float snapDistX = threshold;
+    float snapDistY = threshold;
+    vec2 dif = vec2(0,0);
+    // vec2 p2 = p + size;
+
+    for(auto &pt : snapPts)
+    {
+        // Snap left edge
+        if(fabs(p.x - pt.x) < snapDistX) {
+            dif.x = pt.x - p.x;
+            snapDistX = fabs(p.x - pt.x);
+        }
+        // Snap right edge
+        // if(fabs(p2.x - pt.x) < snapDistX) {
+        //     dif.x = pt.x - p2.x;
+        //     snapDistX = fabs(p2.x - pt.x);
+        // }
+        // Snap top edge
+        if(fabs(p.y - pt.y) < snapDistY) {
+            dif.y = pt.y - p.y;
+            snapDistY = fabs(p.y - pt.y);
+        }
+        // Snap bottom edge
+        // if(fabs(p2.y - pt.y) < snapDistY) {
+        //     dif.y = pt.y - p2.y;
+        //     snapDistY = fabs(p2.y - pt.y);
+        // }
+    }
+    return dif;
+}
+
+void axGUI::resetScroll(const char *id)
+{
+    WindowState &win = windowStates[axIdPart(id)];
+    win.scroll = vec2(0,0);
+    win.scroll0 = vec2(0,0);
+}
+
+void axGUI::pushLayout()
+{
+    scrollStack.push(winScroll);
+    layoutStack.push(layoutArea);
+    clipStack.push(winClip);
+}
+
+void axGUI::popLayout()
+{
+    if (!scrollStack.empty()) {
+        winScroll = scrollStack.top();  // Copy
+        scrollStack.pop();                         // Subtract
+    }
+    if (!layoutStack.empty())   { layoutArea = layoutStack.top();  layoutStack.pop(); }
+    if (!clipStack.empty())   { winClip = clipStack.top();  clipStack.pop();  }
+}
+
+bool axGUI::isInsideLayout()
+{
+    return layoutArea.isPointInRec(ms);
+}
+
+void axGUI::sameline()
+{
+    mSameLine=true;   // WIN_NO_SAMELINE: the next item stays on this row
 }
 
 void axGUI::loadImages()
@@ -1406,10 +1484,9 @@ void axGUI::setHint(bool hovered, const char *hint, vec2 pos)
 void axGUI::text(const std::string &str, float fsz, cColor col, vec2 off, int align)
 {
     // if(outOfLayoutArea(vec2(0,fsz))) return;
-    vec2 pos = curPos+off;
-    vec2 nsz(0,0);
     vec2 tb = bot->textBounds(str, fsz);
-    nsz = vec2(tb.x+1.3*fsz, fmax(nsz.y,1.3*fsz));
+    vec2 nsz = vec2(tb.x+1.3*fsz, 1.3*fsz);
+    vec2 pos = advanceCursor(nsz)+off;
 
     // bot->drawLine(pos,pos+vec2(50,0), cRed, 1.0);
     if(align&BOT_ALIGN_RIGHT) pos.x += nsz.x;
@@ -1417,21 +1494,20 @@ void axGUI::text(const std::string &str, float fsz, cColor col, vec2 off, int al
 
     bot->text(str, pos, fsz, col, align);
     if(debug) bot->roundedRect(pos,nsz,0,0.5,cColor(0));
-
-    advanceCursor(nsz);
 }
 
 void axGUI::label(const char *text, const vec2 &size, int align)
 {
     genID();
     std::string lbl_ = axLabelPart(text); if(text) text = lbl_.c_str();   // "Label##id": only the label is visible
-    if(outOfLayoutArea(size)) { advanceCursor(size); return; }
-    vec2 pos = curPos, tb;
-    vec2 nsz = size;
+    vec2 tb, nsz = size;
+    const bool autoW = nsz.x==0;
     if(nsz.x==0) {
         tb = bot->textBounds(text, fontSize);
         nsz = vec2(tb.x, fmax(nsz.y,2*fontSize));
     }
+    vec2 pos = advanceCursor(nsz, autoW);
+    if(outOfLayoutArea(pos, nsz)) return;
 
     bool hovered = winHovered && rect(pos+winScroll, nsz).isPointInRec(ms) && winClip.isPointInRec(ms);
     if(hovered && !msLeftAction && !msrightAction) hoverID=ID;
@@ -1440,7 +1516,6 @@ void axGUI::label(const char *text, const vec2 &size, int align)
     if(align&BOT_ALIGN_RIGHT) bot->text(text, pos+vec2(nsz.x,nsz.y/2), fontSize, colors[GUI_TEXT_COLOR], align);
 
     // bot->drawText(text, pos+0.5*vec2(0,size.y), textSize, textColor, align);
-    advanceCursor(nsz);
     if(hovered && msLeftReleased)
     {
         // focusID=ID;
@@ -1456,77 +1531,27 @@ void axGUI::label(const char *text, const vec2 &size, int align)
 void axGUI::separator(float gap, const char *title)
 {
     // genID();
-    if(outOfLayoutArea(vec2(0,gap))) { advanceCursor(vec2(0,gap)); newline(0); return; }
-    float x=curPos.x, y=curPos.y;
     float w = layoutArea.size.x;
     if(w<=0) w=100;
-    // Titled separator: title on the left (theme text color), line starts after the title; text() advances the cursor, so the line must not be drawn through the title
+    if(title) gap = fmax(gap, fontSize*1.4f);
+    vec2 ssz(w,gap);
+    vec2 pos = advanceCursor(ssz, true);
+    w = ssz.x;
+    if(outOfLayoutArea(pos, ssz)) { newline(0); return; }
+    float x=pos.x, y=pos.y;
+    // Titled separator: title on the left (theme text color), the line starts after the title
     float lineY = y+gap/2;
     float lx = x;
     if(title) {
-        float th = fmax(gap, fontSize*1.4f);
-        lineY = y+th/2;
         std::string tl = axLabelPart(title);
         bot->text(tl, vec2(x, lineY), fontSize, colors[GUI_TEXT_COLOR], BOT_ALIGN_LEFT|BOT_ALIGN_MIDDLE);
         lx = x + bot->textWidth(tl, fontSize) + 8;
-        gap = th;
     }
     cColor lc = colors[GUI_WIN_BORDERCLR];
     bot->drawLine(vec2(lx,lineY),vec2(x+w,lineY),lc,1);
-    advanceCursor(vec2(w,gap));
     newline(0);
 }
 
-bool axGUI::beginSection(const char *title)
-{
-    genID(title);
-    ItemState &item = sectionStates[ID];
-    vec2 pos = curPos;
-    vec2 size(0,0);
-    float gap=1.5f*fontSize;
-    float iconsz = 1.0f*fontSize;
-    float x=curPos.x, y=curPos.y;
-    float w = layoutArea.size.x;
-    if(w<=0) w=100.0f;
-    size = vec2(w,gap);
-
-    cColor bgClr = colors[GUI_BTN_COLOR];
-    bool hovered = buttonHovered(pos, size);
-    float he = buttonAnim(ID, item, hovered, bgClr, pos);
-    bot->roundedFRect(pos, size, btnRadius, bgClr);
-
-    // The icon is tinted with the theme text color (white would be invisible on a light theme); falls back to a vector triangle without an atlas
-    {
-        const char *ic = item.open ? "tri1_icon" : "tri2_icon";
-        vec2 ip = pos + vec2(itemSpaceX, 0.5f*(size.y-iconsz));
-        cColor tc = mixColor(colors[GUI_TEXT_COLOR], colors[GUI_TEXT_HL_COLOR], he);
-        if(bot->hasIcon(ic)) bot->drawIcon(ic, ip, iconsz, tc);
-        else {
-            vec2 c = ip + vec2(iconsz, iconsz) * 0.5f;
-            float r = iconsz * 0.3f;
-            if(item.open) bot->fillTriangle(c + vec2(-r, -r*0.5f), c + vec2(r, -r*0.5f), c + vec2(0, r*0.6f), tc);
-            else          bot->fillTriangle(c + vec2(-r*0.5f, -r), c + vec2(-r*0.5f, r), c + vec2(r*0.6f, 0), tc);
-        }
-    }
-    if(title) {
-        text(axLabelPart(title), 0, mixColor(colors[GUI_TEXT_COLOR], colors[GUI_TEXT_HL_COLOR], he), vec2(iconsz+2.0f*itemSpaceX,0.5f*(size.y-fontSize)));
-        // bot->drawLine(vec2(x,y+gap/2),vec2(x+w,y+gap/2),cColor(44),1);
-    }
-    // else bot->drawLine(vec2(x,y+gap/2),vec2(x+w,y+gap/2),cColor(44),1);
-    // bot->roundedRect(pos,size,0,1,cRed);
-    item.set(title, pos+winScroll, size, hovered, ID==focusID, 4);
-    bool res = buttonBehavior(item, hovered);
-    advanceCursor(size);
-    newline(0);
-    return beginCollapse(ID, item.open);   // open / close animation
-}
-
-void axGUI::endSection(const char *title)
-{
-    newline(0);
-    endCollapse();
-    separator(4);
-}
 
 //----------------------------------------------------------------------------- collapsible container animation
 float axGUI::stepOpenAnim(float &t, bool open)
@@ -1573,16 +1598,16 @@ void axGUI::endCollapse()
     CollapseFrame f = collapseStack.back();
     collapseStack.pop_back();
     CollapseAnim &a = collapseAnims[f.id];
-    float bottom = fmax(curPos.y + lineHMax, nextPos.y);
+    float bottom = curPos.y + lineHMax;
     a.contentH = fmax(0.0f, bottom - f.startY);   // measured every frame (stays correct when the content changes)
     if(f.animating)
     {
         bot->restore();
         useInput = f.prevUseInput;
         float lx = layoutArea.size.x > 0 ? layoutArea.left() : curPos.x;
-        curPos = nextPos = vec2(lx, f.startY + f.shownH);
+        curPos = vec2(lx, f.startY + f.shownH);
         lineHMax = 0;
-        if(prWinName) { WindowState &w = windowStates[prWinName]; w.curPos = w.nextPos = curPos; }
+        if(prWinName) { WindowState &w = windowStates[prWinName]; w.curPos = curPos; }
     }
 }
 
@@ -1657,8 +1682,9 @@ bool axGUI::ComboBoxList(ComboBoxState &state, const vec2 &pos, const vec2 &size
     return sel;
 }
 
-bool axGUI::comboBox(const vec2 &size, const std::vector<IdStrPair> &items, int &value, const char *hint)
+bool axGUI::comboBox(const vec2 &size_, const std::vector<IdStrPair> &items, int &value, const char *hint)
 {
+    vec2 size = size_;   // a grid cell may widen it
     genID();
     ComboBoxState& state = comboStates[ID];
     for(auto it=items.begin(); it!=items.end(); it++) {
@@ -1669,9 +1695,9 @@ bool axGUI::comboBox(const vec2 &size, const std::vector<IdStrPair> &items, int 
     }
 
     bool sel=false;
-    float x=curPos.x, y=curPos.y;
+    vec2 pos = advanceCursor(size);
     float w = size.x, h = size.y;
-    vec2 pos = curPos;
+    float x=pos.x, y=pos.y;
     bool hovered = rect(pos+winScroll, size).isPointInRec(ms)/* && winClip.isPointInRec(ms)*/;
     bool clicked = msLeftPressed & hovered;
     if(drawComboList && actComboID!=ID) { hovered=false; clicked=false; }
@@ -1722,7 +1748,7 @@ bool axGUI::comboBox(const vec2 &size, const std::vector<IdStrPair> &items, int 
     {
         bot->save();
         bot->resetScissor();
-        bool res = ComboBoxList(state, curPos, actCombosize, items, false);
+        bool res = ComboBoxList(state, pos, actCombosize, items, false);
         if(res) {
             value = items[state.selIx].id;
             proc=sel=true;
@@ -1750,7 +1776,7 @@ bool axGUI::comboBox(const vec2 &size, const std::vector<IdStrPair> &items, int 
                 actComboID=ID;
                 actComboState = state;
                 actComboitems = items;
-                actComboPos = curPos+winScroll;
+                actComboPos = pos+winScroll;
                 actCombosize = size;
             }
             else drawComboList=false;
@@ -1759,20 +1785,35 @@ bool axGUI::comboBox(const vec2 &size, const std::vector<IdStrPair> &items, int 
         proc=true;
     }
 
-    advanceCursor(vec2(w,h));
     return sel;
+}
+
+ItemState &axGUI::empty(vec2 size)
+{
+    genID();
+    ItemState &item = itemStates[ID];
+    vec2 pos = advanceCursor(size);
+
+    bool hovered = winHovered && rect(pos+winScroll, size).isPointInRec(ms)/* && winClip.isPointInRec(ms)*/;
+
+    cColor clr = colors[GUI_IDLE_COLOR];
+    // bot->roundedRect(pos, size, 4, 1, colors[GUI_IDLE_COLOR]);
+    // bot->roundedFRect(pos, size, 4, colors[GUI_IDLE_COLOR]);
+
+    return item;
 }
 
 ItemState &axGUI::dummy(vec2 size, const char *hint)
 {
     genID();
     ItemState &item = itemStates[ID];
-    vec2 pos = curPos;
+    vec2 pos = advanceCursor(size);
 
     bool hovered = winHovered && rect(pos+winScroll, size).isPointInRec(ms)/* && winClip.isPointInRec(ms)*/;
 
     cColor clr = colors[GUI_IDLE_COLOR];
-    bot->roundedFRect(pos, size, 4, colors[GUI_IDLE_COLOR]);
+    bot->roundedRect(pos, size, 4, 1, colors[GUI_IDLE_COLOR]);
+    // bot->roundedFRect(pos, size, 4, colors[GUI_IDLE_COLOR]);
 
     if(hovered)
     {
@@ -1788,10 +1829,9 @@ ItemState &axGUI::dummy(vec2 size, const char *hint)
         else clr = colors[GUI_HOVER_COLOR];
     }
 
-    bot->roundedFRect(pos, size, 4,clr);
+    // bot->roundedFRect(pos, size, 4,clr);
+    bot->roundedRect(pos, size, 4, 1, clr);
     item.set("dummy", pos+winScroll, size, hovered, ID==focusID, 4);
-
-    advanceCursor(size);
     if(hovered)
     {
         if(msLeftAction)  { proc=true; }
@@ -1874,12 +1914,11 @@ bool axGUI::selectable(const char *text, bool selected, bool fitH, float textSiz
     genID();
     std::string lbl_ = axLabelPart(text); if(text) text = lbl_.c_str();   // "Label##id": only the label is visible
     float fsz = textSize?textSize:fontSize;
-    if(outOfLayoutArea(vec2(100,fsz))) { advanceCursor(vec2(100,fsz)); return false; }
     vec2 size = bot->textBounds(text,fsz);
-    vec2 pos = curPos;
-    bool sel = (focusID==ID);
-    sel = selected;
     if(fitH && layoutArea.size.x>0)  size.x = layoutArea.size.x - 2*itemSpaceX;
+    vec2 pos = advanceCursor(size, fitH);
+    if(outOfLayoutArea(pos, size)) return false;
+    bool sel = selected;
     bool hovered = winHovered && rect(pos+winScroll, size).isPointInRec(ms) && winClip.isPointInRec(ms);
     // bot->roundedFRect(pos.x, pos.y, size.x, size.y, 4, sel?colors[GUI_HOVER_COLOR]:colors[GUI_IDLE_COLOR]);
     int align=BOT_ALIGN_LEFT|BOT_ALIGN_MIDDLE;
@@ -1915,21 +1954,22 @@ bool axGUI::selectable(const char *text, bool selected, bool fitH, float textSiz
         if(msLeftReleased) { item.clicked=false; }
     }
     // if(hovered && msLeftPressed) focusID=ID;
-    advanceCursor(size);
     return res;
 }
 
 bool axGUI::button(const char *text, vec2 size, float fsz, const char *hint)
 {
     genID();
-    std::string lbl_ = axLabelPart(text); if(text) text = lbl_.c_str();   // "Label##id": only the label is visible
+    std::string lbl_ = axLabelPart(text);
+    if(text) text = lbl_.c_str();   // "Label##id": only the label is visible
     float fsize = fsz?fsz:fontSize;
     vec2 tb = bot->textBounds(text, fsize);
+    const bool autoW = size.x==0;
     if(size.x==0) size.x = tb.x+2*fsize;
     if(size.y==0) size.y = 2*fsize;
-    if(outOfLayoutArea(size)) { advanceCursor(size); return false; }
+    vec2 pos = advanceCursor(size, autoW);
+    if(outOfLayoutArea(pos, size)) return false;
     ItemState &item = itemStates[ID];
-    vec2 pos = curPos;
 
     cColor bgClr = colors[GUI_BTN_COLOR];
     bool hovered = buttonHovered(pos, size);
@@ -1941,7 +1981,6 @@ bool axGUI::button(const char *text, vec2 size, float fsz, const char *hint)
 
     item.set(text, pos+winScroll, size, hovered, ID==focusID, 4);
     bool res = buttonBehavior(item, hovered);
-    advanceCursor(size);
 
     if(hovered && hint) setHint(hovered, hint, pos+vec2(size.x/2,0));   // centered (not left-aligned)
     return res;
@@ -1950,11 +1989,13 @@ bool axGUI::button(const char *text, vec2 size, float fsz, const char *hint)
 bool axGUI::toggleButton(const char *text, bool *value, vec2 size, const char *hint)
 {
     genID();
-    std::string lbl_ = axLabelPart(text); if(text) text = lbl_.c_str();   // "Label##id": only the label is visible
-    vec2 pos = curPos;
+    std::string lbl_ = axLabelPart(text);
+    if(text) text = lbl_.c_str();   // "Label##id": only the label is visible
     vec2 tb = bot->textBounds(text, fontSize);
+    const bool autoW = size.x==0;
     if(size.x==0) size = vec2(tb.x+2*fontSize, fmax(size.y,2*fontSize));
-    if(outOfLayoutArea(size)) { advanceCursor(size); return false; }
+    vec2 pos = advanceCursor(size, autoW);
+    if(outOfLayoutArea(pos, size)) return false;
     ItemState &item = itemStates[ID];
 
     cColor bgClr = *value ? colors[GUI_BTN_TOGGLE_COLOR] : colors[GUI_BTN_COLOR];   // show hover while open as well
@@ -1968,7 +2009,6 @@ bool axGUI::toggleButton(const char *text, bool *value, vec2 size, const char *h
     item.set(text, pos+winScroll, size, hovered, ID==focusID, 4);
     bool res = buttonBehavior(item, hovered);
     if(res) *value = !*value;
-    advanceCursor(size);
 
     if(hovered && hint) setHint(hovered, hint, pos+vec2(size.x/2,0));   // centered (not left-aligned)
     return false;
@@ -1977,8 +2017,8 @@ bool axGUI::toggleButton(const char *text, bool *value, vec2 size, const char *h
 bool axGUI::imageButton(const std::string &name, vec2 size, cColor tint, const char *hint)
 {
     genID();
-    if(outOfLayoutArea(size)) { advanceCursor(size); return false; }
-    vec2 pos = curPos;
+    vec2 pos = advanceCursor(size);
+    if(outOfLayoutArea(pos, size)) return false;
 
     // bool hovered = useInput && winHovered && rect(pos+winScroll, size).isPointInRec(ms) && winClip.isPointInRec(ms);
     bool hovered = buttonHovered(pos, size);
@@ -2001,8 +2041,6 @@ bool axGUI::imageButton(const std::string &name, vec2 size, cColor tint, const c
     // if(text) bot->drawText(text, pos.x + size.x * 0.5f, pos.y + size.y * 0.5f, textSize, textColor, BOT_ALIGN_CENTER|BOT_ALIGN_MIDDLE);
     ItemState &item = itemStates[ID];
     item.set(name, pos+winScroll, size, hovered, ID==focusID, 4);
-
-    advanceCursor(size);
     if(hovered)
     {
         if(msLeftAction) { proc=true; }
@@ -2013,12 +2051,71 @@ bool axGUI::imageButton(const std::string &name, vec2 size, cColor tint, const c
     return false;
 }
 
+bool axGUI::icon(const std::string &name, vec2 size, const char *hint)
+{
+    genID();
+    IconDef *def = bot->iconDef(name);
+    const float iw = def ? fabsf(def->irect.size.x) : 0, ih = def ? fabsf(def->irect.size.y) : 0;
+    const float aspect = (iw > 0 && ih > 0) ? iw / ih : 1.0f;
+    const bool autoW = size.x <= 0;
+    if(size.x <= 0 && size.y <= 0) size = (iw > 0 && ih > 0) ? vec2(iw, ih) : vec2(64, 64);
+    else if(size.x <= 0) size.x = size.y * aspect;
+    else if(size.y <= 0) size.y = size.x / aspect;
+    vec2 pos = advanceCursor(size, autoW);
+    if(outOfLayoutArea(pos, size)) return false;
+
+    // aspect-fit, centered
+    vec2 dsz = size;
+    if(dsz.x / dsz.y > aspect) dsz.x = dsz.y * aspect; else dsz.y = dsz.x / aspect;
+    vec2 dpos = pos + (size - dsz) * 0.5f;
+    if(def) bot->drawImage(def->image < 0 ? bot->iconsImage : def->image, def->irect, dpos, dsz);   // < 0: icon atlas
+    else bot->roundedRect(pos, size, 4, 1, colors[GUI_WIN_BORDERCLR]);   // missing image: frame only
+
+    ItemState &item = itemStates[ID];
+    bool hovered = buttonHovered(pos, size);
+    item.set(name, pos+winScroll, size, hovered, ID==focusID, 0);
+    bool res = buttonBehavior(item, hovered);
+    if(hovered && hint) setHint(hovered, hint, pos+vec2(size.x/2,0));
+    return res;
+}
+
+bool axGUI::image(const std::string &path, vec2 size, const char *hint)
+{
+    const std::string name = "file:" + path;      // registered with axDrawBot under this name
+    auto it = imageFiles.find(path);
+    if(it == imageFiles.end())
+    {
+        bool ok = false;
+        if(FileExists(path.c_str()))
+        {
+            Texture2D tex = LoadTexture(path.c_str());
+            if(tex.id != 0)
+            {
+                GenTextureMipmaps(&tex);
+                SetTextureFilter(tex, TEXTURE_FILTER_TRILINEAR);
+                ok = bot->addIconFromTexture(name, tex);
+                if(ok) bot->iconDef(name)->owned = true;   // removeIcon frees it
+                else UnloadTexture(tex);
+            }
+        }
+        if(!ok) axLog("Image: cannot load %s", path.c_str());
+        imageFiles[path] = ok;
+    }
+    return icon(name, size, hint);                // missing image: icon() draws a frame
+}
+
+void axGUI::unloadImageFiles()
+{
+    for(auto &[path, ok] : imageFiles) if(ok) bot->removeIcon("file:" + path);
+    imageFiles.clear();
+}
+
 bool axGUI::imageButton(IconDef &def, vec2 size, cColor tint, const char *hint)
 {
     genID();
-    if(outOfLayoutArea(size)) { advanceCursor(size); return false; }
+    vec2 pos = advanceCursor(size);
+    if(outOfLayoutArea(pos, size)) return false;
     ItemState &item = itemStates[ID];
-    vec2 pos = curPos;
     cColor clr = tint;
 
     bool hovered = buttonHovered(pos, size);
@@ -2026,16 +2123,15 @@ bool axGUI::imageButton(IconDef &def, vec2 size, cColor tint, const char *hint)
     // if(text) bot->drawText(text, pos.x + size.x * 0.5f, pos.y + size.y * 0.5f, textSize, textColor, BOT_ALIGN_CENTER|BOT_ALIGN_MIDDLE);
     item.set("imgBtn", pos+winScroll, size, hovered, ID==focusID, 4);
     bool res = buttonBehavior(item, hovered);
-    advanceCursor(size);
     return res;
 }
 
 bool axGUI::shapeButton(vec2 size, const std::string &shape, vec2 shapeSize, cColor clr, float strk, cColor sClr, const char *hint)
 {
     genID();
-    if(outOfLayoutArea(size)) { advanceCursor(size); return false; }
+    vec2 pos = advanceCursor(size);
+    if(outOfLayoutArea(pos, size)) return false;
     ItemState &item = itemStates[ID];
-    vec2 pos = curPos;
     // bool hovered = useInput && winHovered && rect(pos+winScroll, size).isPointInRec(ms) && winClip.isPointInRec(ms);
     bool hovered = buttonHovered(pos, size);
 
@@ -2063,8 +2159,6 @@ bool axGUI::shapeButton(vec2 size, const std::string &shape, vec2 shapeSize, cCo
     if(hovered && hint) setHint(hovered, hint, pos+vec2(size.x/2,0));
 
     item.set(shape, pos+winScroll, size, hovered, ID==focusID, 4);
-
-    advanceCursor(size);
     if(hovered)
     {
         if(msLeftAction) { proc=true; }
@@ -2076,9 +2170,9 @@ bool axGUI::shapeButton(vec2 size, const std::string &shape, vec2 shapeSize, cCo
 bool axGUI::colorButton(vec2 size, vec2 shapeSize, cColor *clrPtr, float strk, cColor sClr, const char *hint)
 {
     genID();
-    if(outOfLayoutArea(size)) { advanceCursor(size); return false; }
+    vec2 pos = advanceCursor(size);
+    if(outOfLayoutArea(pos, size)) return false;
     ItemState &item = itemStates[ID];
-    vec2 pos = curPos;
     // bool hovered = useInput && winHovered && rect(pos+winScroll, size).isPointInRec(ms) && winClip.isPointInRec(ms);
     bool hovered = buttonHovered(pos, size);
 
@@ -2097,7 +2191,6 @@ bool axGUI::colorButton(vec2 size, vec2 shapeSize, cColor *clrPtr, float strk, c
     item.set("clrBtn", pos+winScroll, size, hovered, ID==focusID, 4);
 
     bool res = buttonBehavior(item, hovered);
-    advanceCursor(size);
     if(res)
     {
         if(msLeftAction) { proc=true; }
@@ -2122,10 +2215,9 @@ bool axGUI::checkbox(const char *label, bool *checked, const vec2 &size, vec2 bo
 {
     genID();
     std::string lbl_ = axLabelPart(label); if(label) label = lbl_.c_str();   // "Label##id": only the label is visible
-    if(outOfLayoutArea(size)) { advanceCursor(size); return false; }
     float w = size.x, h = size.y;
-    vec2  pos = curPos;
     vec2 nsz = size;
+    const bool autoW = nsz.x==0;
 
     float bsw  = 2.0f;                 // border stroke width
     if(box==vec2(0,0))   box = vec2(h-bsw, h-bsw);
@@ -2137,6 +2229,8 @@ bool axGUI::checkbox(const char *label, bool *checked, const vec2 &size, vec2 bo
         w = nsz.x + box.x + itemSpaceX + bsw;
         nsz.x = w;
     }
+    vec2 pos = advanceCursor(nsz, autoW);
+    if(outOfLayoutArea(pos, nsz)) return false;
     // box is right-aligned INSIDE the given width (does not overflow onto the neighboring item)
     const float bx   = roundf(pos.x + nsz.x - box.x - 0.5f*bsw);
     const float by   = roundf(pos.y + 0.5f*(nsz.y - box.y));
@@ -2212,8 +2306,6 @@ bool axGUI::checkbox(const char *label, bool *checked, const vec2 &size, vec2 bo
 
     ItemState &item = itemStates[ID];
     item.set(label, pos+winScroll, nsz, hovered, ID==focusID, 2);
-
-    advanceCursor(nsz);
     return *checked;
 }
 
@@ -2247,11 +2339,11 @@ bool axGUI::dragFloat(vec2 size, float min, float max, float *value, float def, 
     static float wait=0;
     bool changed = false;
     genID();
-    if(outOfLayoutArea(size)) { advanceCursor(size); return false; }
+    vec2 pos = advanceCursor(size);
+    if(outOfLayoutArea(pos, size)) return false;
     float w = size.x, h = size.y;
-    float x=curPos.x, y=curPos.y;
+    float x=pos.x, y=pos.y;
     float range = max - min;
-    vec2 pos = curPos;
     // bool hovered = winHovered && rect(pos+winScroll, vec2(w,h)).isPointInRec(ms) && winClip.isPointInRec(ms);
     bool hovered = buttonHovered(pos, vec2(w,h));
 
@@ -2496,7 +2588,6 @@ bool axGUI::dragFloat(vec2 size, float min, float max, float *value, float def, 
     }
     ItemState &item = itemStates[ID];
     item.set("dragFloat", pos+winScroll, size, hovered, ID==focusID, 2);
-    advanceCursor(vec2(w,h));
     return changed;
 }
 
@@ -2523,13 +2614,12 @@ bool axGUI::dragInt(vec2 size, int min, int max, int *value, float speed, bool b
 {
     bool changed = false;
     genID();
-    if(outOfLayoutArea(size)) { advanceCursor(size); return false; }
+    vec2 pos = advanceCursor(size);
+    if(outOfLayoutArea(pos, size)) return false;
     float w = size.x, h = size.y;
-    float x=curPos.x, y=curPos.y;
+    float x=pos.x, y=pos.y;
     float range = max - min;
     static float wait=0;
-
-    vec2 pos = curPos;
     // bool hovered = winHovered && rect(pos+winScroll, vec2(w,h)).isPointInRec(ms) && winClip.isPointInRec(ms);
     bool hovered = buttonHovered(pos, vec2(w,h));
 
@@ -2610,7 +2700,6 @@ bool axGUI::dragInt(vec2 size, int min, int max, int *value, float speed, bool b
 
     // Value text
     bot->text(axFormat("%d", *value), x+w/2, y+h/2, fontSize, (hovered&!msLeftAction)?colors[GUI_TEXT_HL_COLOR]:colors[GUI_TEXT_COLOR], align);
-    advanceCursor(vec2(w,h));
     return changed;
 }
 
@@ -2635,14 +2724,14 @@ bool axGUI::dragColor(vec2 size, cColor &clr, float speed, const char *frmt, boo
 float axGUI::slider(vec2 off, vec2 size, float min, float max, float *value)
 {
     genID();
-    if(outOfLayoutArea(size)) { advanceCursor(size); return false; }
+    vec2 pos = advanceCursor(vec2(size.x+32, size.y));   // value text on the right
+    if(outOfLayoutArea(pos, size)) return false;
     ItemState &item = itemStates[ID];
     float w = size.x, h = size.y;
     float radius = 8.0f;
     float knobRadius = 6.0f;
 
-    vec2 pos = curPos;
-    float x=curPos.x, y=curPos.y;
+    float x=pos.x, y=pos.y;
     // float x=pos.x+off.x, y=pos.y+off.y;
     float range = max - min;
     float norm = (*value - min) / range;
@@ -2684,7 +2773,6 @@ float axGUI::slider(vec2 off, vec2 size, float min, float max, float *value)
     bot->text(axFormat("%.2f", *value), x+leftMargin+w, y+h/2, fontSize, (hv || active)?colors[GUI_TEXT_HL_COLOR]:colors[GUI_TEXT_COLOR], BOT_ALIGN_LEFT | BOT_ALIGN_MIDDLE);
 
     item.set("slider", pos+winScroll, size, hovered, ID==focusID, 4);
-    advanceCursor(vec2(w+32,h));
 
     // if(msLeftReleased)  focusGUI=false;
     return *value;
@@ -2693,11 +2781,11 @@ float axGUI::slider(vec2 off, vec2 size, float min, float max, float *value)
 bool axGUI::drawColorSlider(vec2 off, vec2 size, float *value, float vmax, cColor barColor)
 {
     genID();
-    if(outOfLayoutArea(size)) { advanceCursor(size); return false; }
+    vec2 pos = advanceCursor(size + off);
+    if(outOfLayoutArea(pos, size + off)) return false;
     float height = size.y;
     float knobRadius = height * 0.5f; // Scale knob with height
     float norm = Clamp(*value / vmax, 0.0f, 1.0f); // Ensure 0-1 range
-    vec2 pos = curPos;
     float x = pos.x + off.x, y = pos.y + off.y;
     float w = size.x, h = size.y;
     float knobX = w * norm;
@@ -2806,7 +2894,6 @@ bool axGUI::drawColorSlider(vec2 off, vec2 size, float *value, float vmax, cColo
         bot->text(valueText, x + w / 2, y + h + 5, fontSize - 2, colors[GUI_TEXT_COLOR], BOT_ALIGN_CENTER);
     }
 
-    advanceCursor(size + off);
     return changed;
 }
 
@@ -2932,7 +3019,7 @@ bool axGUI::drawColorPicker(cColor &clr, vec2 pos, vec2 size, bool &open)
 
     // --- saturation / brightness square
     const float svH = fminf(160.0f, W * 0.62f);
-    vec2 sp = cursorPos();
+    vec2 sp = advanceCursor(vec2(W, svH));
     rect svR(sp + winScroll, vec2(W, svH));
     cColor hueC = hsvToRgb(P.h, 1, 1, 255);
     {
@@ -2944,14 +3031,13 @@ bool axGUI::drawColorPicker(cColor &clr, vec2 pos, vec2 size, bool &open)
         });
         bot->roundedRect(sp, vec2(W, svH), 0, 1, border);
     }
-    advanceCursor(vec2(W, svH));
     newline(); spacerV(2);
 
     // --- hue bar
     const float barH = 12;
     const float kin = 8;   // bars are inset by the cursor radius (so the cursor does not overflow at the edge)
     const float BW = W - 2 * kin;
-    vec2 hp = cursorPos() + vec2(kin, 0);
+    vec2 hp = advanceCursor(vec2(W, barH)) + vec2(kin, 0);
     rect hueR(hp + winScroll - vec2(0, 4), vec2(BW, barH + 8));
     {
         Rectangle r = { hp.x, hp.y, BW, barH };
@@ -2964,11 +3050,10 @@ bool axGUI::drawColorPicker(cColor &clr, vec2 pos, vec2 size, bool &open)
         });
         bot->roundedRect(hp, vec2(BW, barH), 0, 1, border);
     }
-    advanceCursor(vec2(W, barH));
     newline(); spacerV(4);
 
     // --- alpha bar (checkerboard background)
-    vec2 ap = cursorPos() + vec2(kin, 0);
+    vec2 ap = advanceCursor(vec2(W, barH)) + vec2(kin, 0);
     rect alR(ap + winScroll - vec2(0, 4), vec2(BW, barH + 8));
     {
         Rectangle r = { ap.x, ap.y, BW, barH };
@@ -2984,7 +3069,6 @@ bool axGUI::drawColorPicker(cColor &clr, vec2 pos, vec2 size, bool &open)
         });
         bot->roundedRect(ap, vec2(BW, barH), 0, 1, border);
     }
-    advanceCursor(vec2(W, barH));
     newline(); spacerV(4);
 
     // --- dragging (square / hue / alpha)
@@ -3022,7 +3106,7 @@ bool axGUI::drawColorPicker(cColor &clr, vec2 pos, vec2 size, bool &open)
 
     // --- eyedropper | HEX | alpha %
     {
-        vec2 bp = cursorPos();
+        vec2 bp = advanceCursor(vec2(rowH, rowH));
         // eyedropper button
         bool edHover = rect(bp + winScroll, vec2(rowH, rowH)).isPointInRec(ms);
         cColor eb = pickerEyedrop ? colors[GUI_BTN_TOGGLE_COLOR] : (edHover ? colors[GUI_BTN_HOVER_COLOR] : colors[GUI_BTN_COLOR]);
@@ -3037,7 +3121,6 @@ bool axGUI::drawColorPicker(cColor &clr, vec2 pos, vec2 size, bool &open)
         }
         if(edHover && msLeftReleased && useInput) { pickerEyedrop = !pickerEyedrop; proc = true; }
         if(edHover) setHint(true, axTr("Pick a color from the screen", "Ekrandan renk al"), bp + vec2(rowH * 0.5f, 0));
-        advanceCursor(vec2(rowH, rowH));
 
         // HEX
         const float pctW = 64;
@@ -3109,7 +3192,7 @@ int axGUI::popupMenu(const char *text, PopupState &st, vec2 pos, vec2 size, floa
     if(!st.open && !st.first) return -1;
 
     const float w = size.x;
-    LayoutStateGuard _guard(winflag, curPos, curPos0, nextPos, layoutArea);
+    // LayoutStateGuard _guard(winflag, curPos, curPos0, layoutArea);
     genID();
 
     cString winId="popup_menu";
@@ -3233,7 +3316,6 @@ bool axGUI::beginTabBar(const char* strId)
     atb.currentTabIndex = -1;
     atb.contentEndY     = atb.contentY;  // no content yet
     atb.savedCurPos     = curPos;
-    atb.savedNextPos    = nextPos;
     tabBarStack.push_back(atb);
 
     return true;
@@ -3384,7 +3466,6 @@ bool axGUI::beginTabItem(const char* label, bool* pOpen)
 
         // Move the cursor to the content area
         curPos  = vec2(atb.origin.x, atb.contentY);
-        nextPos = curPos;
         lineHMax = 0;
     }
 
@@ -3562,14 +3643,12 @@ void axGUI::endTabBar()
     // --- Move the cursor past the content ---
     float finalY = fmax(atb.contentEndY, atb.contentY);
     curPos  = vec2(atb.savedCurPos.x, finalY + itemSpaceY);
-    nextPos = curPos;
     lineHMax = 0;
 
     // Update window state (parent window cursor tracking)
     if (prWinName) {
         WindowState& win = windowStates[prWinName];
         win.curPos  = curPos;
-        win.nextPos = curPos;
     }
 
     tabBarStack.pop_back();

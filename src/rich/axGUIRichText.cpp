@@ -28,9 +28,11 @@ bool axGUI::richTextBox(RichTextState &st, vec2 size)
     st.editor.readOnly = st.readOnly;
     st.hoverLink.clear();
 
+    const bool autoW = size.x <= 0;
     if (size.x <= 0) size.x = getContainerWidth();
     if (size.y <= 0) size.y = 200;
-    if (!st.focused && outOfLayoutArea(size)) { advanceCursor(size); return false; }
+    const vec2 pos = advanceCursor(size, autoW);
+    if (!st.focused && outOfLayoutArea(pos, size)) return false;
 
     // font system: load on first use; DPI / atlas maintenance once per frame
     if (!rtFonts().loaded()) rtFonts().load(std::string(GetApplicationDirectory()) + "resources/fonts");
@@ -39,7 +41,6 @@ bool axGUI::richTextBox(RichTextState &st, vec2 size)
         if (fontFrame != frameCnt) { fontFrame = frameCnt; rtFonts().beginFrame(); }
     }
 
-    const vec2 pos = curPos;
     const float sbW = 8.0f;                         // scrollbar strip
     RichTextView &view = st.view;
     RichEditor &ed = st.editor;
@@ -218,7 +219,6 @@ bool axGUI::richTextBox(RichTextState &st, vec2 size)
 
     ItemState &item = itemStates[id];
     item.set("richText", pos + winScroll, size, hovered, st.focused, st.radius);
-    advanceCursor(size);
 
     st.changed = st.changed || ed.changedThisFrame;
     return st.changed;

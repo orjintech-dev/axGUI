@@ -98,4 +98,5 @@ endfunction()
 
 if(AXGUI_BUILD_DEMOS)
     add_subdirectory(demos/showcase)
+    add_subdirectory(demos/layouts)
 endif()

@@ -2,6 +2,32 @@
 
 All notable changes to axGUI. Dates are YYYY-MM-DD.
 
+## [Unreleased]
+
+### Added
+- **Layouts demo** (`demos/layouts`, target `axGUI-layouts`): a layout lab with flow flags, the layout cursor, spacing, layout recipes (equal columns, form rows, aligned rows, fill remaining width, split) and containers, with a debug overlay.
+- `gui.lastItemSize()`: size of the last item (with `lastItemPos()` it gives the item rect).
+- `gui.debugLayout`: outlines every item placed through `advanceCursor` and shows the `itemSpaceX` gap after it.
+- **Grid layout**: `beginGrid(id, cols, rows = 0, valign = BOT_ALIGN_TOP)` / `endGrid()`. Each item goes into the next cell (equal columns, `itemSpaceX` between them); an item with automatic width (size.x = 0, or a widget that picks its own width) fills the cell. Each row is as tall as its tallest item; `valign` aligns items in the row (top / middle / bottom, using the previous frame's row heights). Grids nest, and a group box in a cell fills it while its own content flows normally.
+- `Layout` (with `axLayoutType`, `axLayoutFlags`) and the `layouts` stack: the layout state of a grid.
+- `advanceCursor(vec2 &size, bool fillW)`: size is in / out, so a grid cell can widen an item; `advanceCursor(const vec2&)` for temporaries.
+- `icon(name, size, hint)`: shows an icon / texture registered with axDrawBot, aspect-fit and centered.
+- `image(path, size, hint)`: shows an image file (png, jpg...), loaded on first use and cached by path; `unloadImageFiles()` frees them.
+- Layouts demo: a grid with text, buttons, an icon and an image file in the Flow window.
+
+### Changed
+- **Layout:** `advanceCursor(size)` is now called by every widget *before* it draws and returns the item's position (`vec2 pos = advanceCursor(size);`). Custom widgets that called it after drawing must switch to this order. `outOfLayoutArea(pos, size)` added.
+- `WIN_NO_SAMELINE` works ImGui-style: `A; sameline(); B` keeps B on A's row.
+- The layout has a single cursor (`curPos`): the redundant `nextPos` is removed, including `WindowState::nextPos`.
+- `pushWinStack` / `popWinStack` are renamed `pushLayout` / `popLayout`.
+- `dummy()` draws an outline instead of a filled box; the window title bar's hit area is inset by 1 px.
+
+### Removed
+- `LayoutStateGuard` (it only restored state that nothing read; `popupMenu` no longer uses it).
+
+### Fixed
+- `WIN_AUTO_NEWLINE` wraps by the item's own size: a wide item no longer runs past the right edge, and an item that fits is no longer pushed to the next row. Rows that filled the width no longer get an extra `itemSpaceY` gap.
+
 ## [0.1.0] - 2026-10-20
 
 First public version: the library together with its demo app, desktop and WebAssembly builds.

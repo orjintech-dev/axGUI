@@ -150,10 +150,10 @@ bool axGUI::textBox(TextBoxState& st, vec2 size)
     bool submitted = false;
     genID();
     // skip drawing if fully outside the visible area (like other widgets); keep processing input if focused
-    if (!st.focused && outOfLayoutArea(size)) { advanceCursor(size); return false; }
+    const vec2 pos = advanceCursor(size);
+    if (!st.focused && outOfLayoutArea(pos, size)) return false;
     // NVGcontext* vg = bot->vg;
     const float w = size.x, h = size.y;
-    const vec2 pos = curPos;
     const float pad = st.padding;
     const float strk = textcfg.borderWidth;
     int txAlign = BOT_ALIGN_LEFT | BOT_ALIGN_MIDDLE;
@@ -940,7 +940,5 @@ bool axGUI::textBox(TextBoxState& st, vec2 size)
     if (st.showDebugInfo) {
         st.renderDebugInfo(bot, pos, size);
     }
-
-    advanceCursor(size);
     return submitted;
 }

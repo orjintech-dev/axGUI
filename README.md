@@ -80,6 +80,7 @@ Command line: `--lang tr`, `--light`, `--style`, `--size WxH`, `--screenshot out
 | `src/sdf2d/` | SDF 2D renderer |
 | `src/axGUI.pri` | qmake include for the library |
 | `demos/showcase/` | Showcase demo (every widget, style editor, rich text, drawing) |
+| `demos/layouts/` | Layout lab: flow flags, layout cursor, spacing, layout recipes, containers (debug overlay) |
 | `demos/demo.pri`, `libs/raylib.pri` | Shared qmake settings for demos / raylib |
 | `libs/` | raylib 6.0 (unmodified), nlohmann/json |
 | `resources/` | Roboto fonts, icon atlas |
